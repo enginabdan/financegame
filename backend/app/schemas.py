@@ -21,6 +21,9 @@ class DayAllocation(BaseModel):
     gig_hours: int = Field(ge=0, le=12)
     delivery_hours: int = Field(ge=0, le=12)
     marketplace_hours: int = Field(ge=0, le=12)
+    insurance_choice: Literal["none", "basic", "family"] = "basic"
+    car_action: Literal["keep", "maintain", "replace"] = "keep"
+    emergency_fund_contribution: float = Field(default=0.0, ge=0.0, le=300.0)
 
 
 class AdvanceDayRequest(BaseModel):

@@ -60,6 +60,10 @@ function renderClasses(classes) {
       <strong>${cls.class_name}</strong>
       <p class="meta">Class Code: <strong>${cls.class_code}</strong></p>
       <p class="meta">Assignments: ${cls.assignment_count} (Active: ${cls.active_assignment_count})</p>
+      <p class="meta">
+        <button data-copy="${cls.class_code}" data-kind="class">Copy Class Code</button>
+        <button data-use-class="${cls.class_code}" data-kind="class">Use in Assignment Form</button>
+      </p>
     `;
     classListEl.appendChild(card);
   }
@@ -80,6 +84,10 @@ function renderAssignments(assignments) {
       <p class="meta">Class: ${item.class_code} | Assignment Code: <strong>${item.assignment_code}</strong></p>
       <p class="meta">City: ${item.city} | Start Cash: ${money(item.start_cash)} | Duration: ${item.duration_days} days</p>
       <p class="meta">Enrolled Students: ${item.enrolled_sessions}</p>
+      <p class="meta">
+        <button data-copy="${item.class_code}" data-kind="assignment">Copy Class Code</button>
+        <button data-copy="${item.assignment_code}" data-kind="assignment">Copy Assignment Code</button>
+      </p>
     `;
     assignmentListEl.appendChild(card);
   }
@@ -150,6 +158,15 @@ function persistAccess(apiBase, teacherKey) {
     localStorage.removeItem(STORAGE_API_BASE);
     localStorage.removeItem(STORAGE_TEACHER_KEY);
     localStorage.removeItem(STORAGE_REMEMBER);
+  }
+}
+
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    alert(`Copied: ${value}`);
+  } catch (_err) {
+    alert("Clipboard permission blocked. Copy manually.");
   }
 }
 
@@ -303,6 +320,35 @@ createAssignmentBtn.addEventListener("click", () => {
     console.error(err);
     alert("Unexpected error while creating assignment");
   });
+});
+
+classListEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const copyValue = target.getAttribute("data-copy");
+  if (copyValue) {
+    copyText(copyValue).catch(() => {});
+    return;
+  }
+
+  const useClass = target.getAttribute("data-use-class");
+  if (useClass) {
+    assignClassCodeInput.value = useClass;
+  }
+});
+
+assignmentListEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) {
+    return;
+  }
+  const copyValue = target.getAttribute("data-copy");
+  if (copyValue) {
+    copyText(copyValue).catch(() => {});
+  }
 });
 
 restoreAccessFields();

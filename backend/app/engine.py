@@ -59,6 +59,9 @@ class FinanceGameEngine:
         )
 
         variable_costs = 14.0 + (allocation.gig_hours + allocation.delivery_hours) * 3.4 + allocation.marketplace_hours * 1.4
+        insurance_cost = self._insurance_cost(allocation.insurance_choice)
+        emergency_contribution = allocation.emergency_fund_contribution
+        car_action_cost = self._car_action_cost(allocation.car_action)
         household_costs = self._daily_household_cost(state.day) * self._city_cost_multiplier(state.city)
 
         taxable_base = max(0.0, gross - platform_fees)
@@ -70,7 +73,19 @@ class FinanceGameEngine:
         if state.cash > 700 and state.debt > 0:
             debt_payment = min(45.0, state.debt, max(0.0, state.cash - 500))
 
-        net = gross - platform_fees - variable_costs - household_costs - tax_reserve + event.cash_impact - debt_interest - debt_payment
+        net = (
+            gross
+            - platform_fees
+            - variable_costs
+            - insurance_cost
+            - emergency_contribution
+            - car_action_cost
+            - household_costs
+            - tax_reserve
+            + event.cash_impact
+            - debt_interest
+            - debt_payment
+        )
 
         state.cash += net
         state.debt = max(0.0, state.debt + debt_interest - debt_payment)
@@ -91,6 +106,12 @@ class FinanceGameEngine:
         event_text = event.text
         if debt_payment > 0:
             event_text = f"{event_text} Debt payment made: ${debt_payment:.0f}."
+        if insurance_cost > 0:
+            event_text = f"{event_text} Insurance: ${insurance_cost:.0f}."
+        if emergency_contribution > 0:
+            event_text = f"{event_text} Emergency fund set aside: ${emergency_contribution:.0f}."
+        if car_action_cost > 0:
+            event_text = f"{event_text} Car action cost: ${car_action_cost:.0f}."
 
         return {
             "day": state.day,
@@ -143,6 +164,16 @@ class FinanceGameEngine:
             delta += 3
         if state.debt > 400:
             delta += 2
+        if allocation.insurance_choice == "none":
+            delta += 2
+        elif allocation.insurance_choice == "family":
+            delta -= 1
+        if allocation.car_action == "maintain":
+            delta -= 1
+        if allocation.car_action == "replace":
+            delta -= 3
+        if allocation.emergency_fund_contribution >= 40:
+            delta -= 1
 
         return max(0, min(100, state.stress + delta))
 
@@ -256,3 +287,17 @@ class FinanceGameEngine:
         stress_delta = 0.01 if stress > 80 else 0.0
         kind_delta = 0.01 if kind == "marketplace" and stress > 65 else 0.0
         return max(0.08, min(0.30, base + stress_delta + kind_delta))
+
+    def _insurance_cost(self, insurance_choice: str) -> float:
+        if insurance_choice == "none":
+            return 0.0
+        if insurance_choice == "family":
+            return 24.0
+        return 12.0
+
+    def _car_action_cost(self, car_action: str) -> float:
+        if car_action == "maintain":
+            return 18.0
+        if car_action == "replace":
+            return 160.0
+        return 0.0

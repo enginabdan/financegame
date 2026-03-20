@@ -45,7 +45,10 @@
             <input id="assignmentCode" placeholder="e.g., X7Y8Z9Q" />
           </label>
         </div>
-        <p class="meta">If class and assignment codes are provided, the student joins that assignment.</p>
+        <p id="assignmentJoinHint" class="meta">
+          If class and assignment codes are provided, the student joins that assignment and city is locked by the
+          teacher setup.
+        </p>
         <button id="startBtn">Start New Game</button>
       </section>
 
@@ -68,6 +71,28 @@
           <label>
             Marketplace Hours
             <input id="marketHours" type="number" min="0" max="12" value="2" />
+          </label>
+        </div>
+        <div class="grid three" style="margin-top: 10px">
+          <label>
+            Insurance
+            <select id="insuranceChoice">
+              <option value="none">No Coverage</option>
+              <option value="basic" selected>Basic Plan</option>
+              <option value="family">Family Plan</option>
+            </select>
+          </label>
+          <label>
+            Car Action
+            <select id="carAction">
+              <option value="keep" selected>Keep Current Car</option>
+              <option value="maintain">Preventive Maintenance</option>
+              <option value="replace">Replace Car (high cost)</option>
+            </select>
+          </label>
+          <label>
+            Emergency Fund ($/day)
+            <input id="emergencyFundContribution" type="number" min="0" max="300" step="5" value="0" />
           </label>
         </div>
         <button id="advanceBtn">Advance Day</button>

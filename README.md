@@ -19,6 +19,7 @@ The player simultaneously manages:
 - Gig driving (Uber-like work)
 - Delivery routes (Amazon/Walmart-style shifts)
 - Online selling (Amazon, Etsy, Walmart Marketplace)
+- Daily financial decisions on insurance, car actions, and emergency-fund contributions
 
 Household context includes:
 

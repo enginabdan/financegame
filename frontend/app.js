@@ -6,6 +6,10 @@ const startBtn = document.getElementById("startBtn");
 const advanceBtn = document.getElementById("advanceBtn");
 const stats = document.getElementById("stats");
 const log = document.getElementById("log");
+const cityInput = document.getElementById("city");
+const classCodeInput = document.getElementById("classCode");
+const assignmentCodeInput = document.getElementById("assignmentCode");
+const assignmentJoinHint = document.getElementById("assignmentJoinHint");
 
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
@@ -56,9 +60,9 @@ function addLog(result, score) {
 
 async function startGame() {
   const playerName = document.getElementById("playerName").value || "Student";
-  const city = document.getElementById("city").value || "Charlotte, NC";
-  const classCode = (document.getElementById("classCode").value || "").trim().toUpperCase();
-  const assignmentCode = (document.getElementById("assignmentCode").value || "").trim().toUpperCase();
+  const city = cityInput.value || "Charlotte, NC";
+  const classCode = (classCodeInput.value || "").trim().toUpperCase();
+  const assignmentCode = (assignmentCodeInput.value || "").trim().toUpperCase();
 
   const useAssignmentJoin = classCode.length > 0 || assignmentCode.length > 0;
   if (useAssignmentJoin && (!classCode || !assignmentCode)) {
@@ -98,6 +102,9 @@ async function advanceDay() {
     gig_hours: Number(document.getElementById("gigHours").value || 0),
     delivery_hours: Number(document.getElementById("deliveryHours").value || 0),
     marketplace_hours: Number(document.getElementById("marketHours").value || 0),
+    insurance_choice: document.getElementById("insuranceChoice").value || "basic",
+    car_action: document.getElementById("carAction").value || "keep",
+    emergency_fund_contribution: Number(document.getElementById("emergencyFundContribution").value || 0),
   };
 
   const totalHours = allocation.gig_hours + allocation.delivery_hours + allocation.marketplace_hours;
@@ -123,6 +130,20 @@ async function advanceDay() {
   addLog(data.result, data.score);
 }
 
+function updateAssignmentMode() {
+  const classCode = (classCodeInput.value || "").trim();
+  const assignmentCode = (assignmentCodeInput.value || "").trim();
+  const assignmentMode = Boolean(classCode || assignmentCode);
+
+  cityInput.disabled = assignmentMode;
+  assignmentJoinHint.classList.toggle("active-hint", assignmentMode);
+}
+
+function normalizeCodes() {
+  classCodeInput.value = (classCodeInput.value || "").toUpperCase().trimStart();
+  assignmentCodeInput.value = (assignmentCodeInput.value || "").toUpperCase().trimStart();
+}
+
 startBtn.addEventListener("click", () => {
   startGame().catch((err) => {
     console.error(err);
@@ -136,3 +157,15 @@ advanceBtn.addEventListener("click", () => {
     alert("Unexpected error while advancing day");
   });
 });
+
+classCodeInput.addEventListener("input", () => {
+  normalizeCodes();
+  updateAssignmentMode();
+});
+
+assignmentCodeInput.addEventListener("input", () => {
+  normalizeCodes();
+  updateAssignmentMode();
+});
+
+updateAssignmentMode();

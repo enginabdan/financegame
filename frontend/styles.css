@@ -67,10 +67,23 @@ label {
   font-weight: 600;
 }
 
-input {
+input,
+select {
   padding: 10px;
   border: 1px solid #b0bec5;
   border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+input:disabled {
+  background: #eceff1;
+  color: #546e7a;
+}
+
+.meta.active-hint {
+  color: #0f4c81;
+  font-weight: 700;
 }
 
 button {
