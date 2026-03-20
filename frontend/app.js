@@ -1,11 +1,13 @@
 const API_BASE = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 
 let sessionId = null;
+let dayResults = [];
 
 const startBtn = document.getElementById("startBtn");
 const advanceBtn = document.getElementById("advanceBtn");
 const stats = document.getElementById("stats");
 const log = document.getElementById("log");
+const weeklyReport = document.getElementById("weeklyReport");
 const cityInput = document.getElementById("city");
 const classCodeInput = document.getElementById("classCode");
 const assignmentCodeInput = document.getElementById("assignmentCode");
@@ -58,6 +60,44 @@ function addLog(result, score) {
   log.prepend(item);
 }
 
+function renderWeeklyReport() {
+  weeklyReport.innerHTML = "";
+  if (!dayResults.length) {
+    weeklyReport.innerHTML = '<article class="log-item">Weekly summaries will appear every 7 days.</article>';
+    return;
+  }
+
+  const weeks = [];
+  for (let i = 0; i < dayResults.length; i += 7) {
+    weeks.push(dayResults.slice(i, i + 7));
+  }
+
+  for (let w = 0; w < weeks.length; w += 1) {
+    const chunk = weeks[w];
+    const completedWeek = chunk.length === 7 || dayResults[dayResults.length - 1].state.status !== "active";
+    if (!completedWeek) {
+      continue;
+    }
+
+    const gross = chunk.reduce((sum, d) => sum + d.result.gross_income, 0);
+    const fees = chunk.reduce((sum, d) => sum + d.result.platform_fees, 0);
+    const household = chunk.reduce((sum, d) => sum + d.result.household_costs, 0);
+    const tax = chunk.reduce((sum, d) => sum + d.result.tax_reserve, 0);
+    const avgStress = Math.round(chunk.reduce((sum, d) => sum + d.state.stress, 0) / chunk.length);
+    const endCash = chunk[chunk.length - 1].state.cash;
+    const avgScore = Math.round(chunk.reduce((sum, d) => sum + d.score, 0) / chunk.length);
+
+    const item = document.createElement("article");
+    item.className = "log-item";
+    item.innerHTML = `
+      <strong>Week ${w + 1} Summary</strong>
+      <p class="meta">Gross: ${money(gross)} | Fees: ${money(fees)} | Household: ${money(household)} | Tax Set-Aside: ${money(tax)}</p>
+      <p class="meta">End Cash: ${money(endCash)} | Avg Stress: ${avgStress} | Avg Score: ${avgScore}</p>
+    `;
+    weeklyReport.appendChild(item);
+  }
+}
+
 async function startGame() {
   const playerName = document.getElementById("playerName").value || "Student";
   const city = cityInput.value || "Charlotte, NC";
@@ -88,7 +128,9 @@ async function startGame() {
 
   const state = await response.json();
   sessionId = state.session_id;
+  dayResults = [];
   log.innerHTML = "";
+  renderWeeklyReport();
   renderState(state);
 }
 
@@ -126,8 +168,10 @@ async function advanceDay() {
   }
 
   const data = await response.json();
+  dayResults.push(data);
   renderState(data.state, data.score);
   addLog(data.result, data.score);
+  renderWeeklyReport();
 }
 
 function updateAssignmentMode() {

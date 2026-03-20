@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from .db import AssignmentEnrollmentModel, AssignmentModel, ClassroomModel, GameDayLogModel, GameSessionModel
 from .schemas import (
+    AssignmentRubricRow,
     AssignmentSummary,
     ClassroomSummary,
     DailyResult,
@@ -155,6 +156,34 @@ class GameRepository:
                 )
             )
         return results
+
+    def assignment_rubric(self, assignment_code: str, limit: int = 200) -> list[AssignmentRubricRow]:
+        rows = (
+            self.db.query(GameSessionModel)
+            .join(AssignmentEnrollmentModel, AssignmentEnrollmentModel.session_id == GameSessionModel.session_id)
+            .join(AssignmentModel, AssignmentModel.id == AssignmentEnrollmentModel.assignment_id)
+            .filter(AssignmentModel.assignment_code == assignment_code.upper())
+            .order_by(GameSessionModel.score.desc(), GameSessionModel.updated_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        return [
+            AssignmentRubricRow(
+                session_id=row.session_id,
+                player_name=row.player_name,
+                day=row.day,
+                cash=round(row.cash, 2),
+                debt=round(row.debt, 2),
+                stress=row.stress,
+                score=row.score,
+                letter_grade=self._grade_letter(row.score),
+                performance_band=self._performance_band(row.score),
+                status=row.status,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
 
     def _assignment_by_codes(self, class_code: str, assignment_code: str) -> tuple[AssignmentModel, ClassroomModel] | None:
         row = (
@@ -379,3 +408,25 @@ class GameRepository:
             )
             for row in rows
         ]
+
+    def _grade_letter(self, score: int) -> str:
+        if score >= 90:
+            return "A"
+        if score >= 80:
+            return "B"
+        if score >= 70:
+            return "C"
+        if score >= 60:
+            return "D"
+        return "F"
+
+    def _performance_band(self, score: int) -> str:
+        if score >= 90:
+            return "Outstanding financial management"
+        if score >= 80:
+            return "Strong and consistent decisions"
+        if score >= 70:
+            return "Meets expectations with moderate risk"
+        if score >= 60:
+            return "At-risk budgeting and planning"
+        return "Needs intervention and support"

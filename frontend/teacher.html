@@ -84,6 +84,10 @@
 
       <section class="panel">
         <h2>Overview</h2>
+        <div class="grid two">
+          <button id="exportSessionsCsvBtn" style="margin-top: 0">Export Sessions CSV</button>
+          <button id="exportLogsCsvBtn" style="margin-top: 0">Export Selected Logs CSV</button>
+        </div>
         <div id="overview" class="stats"></div>
       </section>
 
@@ -95,6 +99,20 @@
       <section class="panel">
         <h2>Selected Session Logs</h2>
         <div id="logs" class="log"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Assignment Rubric</h2>
+        <div class="grid two">
+          <label>
+            Assignment Code
+            <input id="rubricAssignmentCodeInput" placeholder="e.g., X7Y8Z9Q" />
+          </label>
+          <div>
+            <button id="loadRubricBtn">Load Rubric</button>
+          </div>
+        </div>
+        <div id="rubricList" class="log" style="margin-top: 12px"></div>
       </section>
     </main>
 

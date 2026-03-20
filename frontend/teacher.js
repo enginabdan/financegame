@@ -1,12 +1,16 @@
 const loadBtn = document.getElementById("loadBtn");
 const createClassBtn = document.getElementById("createClassBtn");
 const createAssignmentBtn = document.getElementById("createAssignmentBtn");
+const loadRubricBtn = document.getElementById("loadRubricBtn");
+const exportSessionsCsvBtn = document.getElementById("exportSessionsCsvBtn");
+const exportLogsCsvBtn = document.getElementById("exportLogsCsvBtn");
 
 const overviewEl = document.getElementById("overview");
 const sessionsEl = document.getElementById("sessions");
 const logsEl = document.getElementById("logs");
 const classListEl = document.getElementById("classList");
 const assignmentListEl = document.getElementById("assignmentList");
+const rubricListEl = document.getElementById("rubricList");
 
 const apiBaseInput = document.getElementById("apiBase");
 const teacherKeyInput = document.getElementById("teacherKey");
@@ -18,11 +22,14 @@ const assignTitleInput = document.getElementById("assignTitleInput");
 const assignCityInput = document.getElementById("assignCityInput");
 const assignStartCashInput = document.getElementById("assignStartCashInput");
 const assignDurationInput = document.getElementById("assignDurationInput");
+const rubricAssignmentCodeInput = document.getElementById("rubricAssignmentCodeInput");
 
 const defaultApiBase = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 const STORAGE_API_BASE = "financegame_teacher_api_base";
 const STORAGE_TEACHER_KEY = "financegame_teacher_key";
 const STORAGE_REMEMBER = "financegame_teacher_remember";
+let currentSessions = [];
+let currentSelectedLogs = [];
 
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
@@ -94,6 +101,7 @@ function renderAssignments(assignments) {
 }
 
 function renderSessions(sessions, apiBase, teacherKey) {
+  currentSessions = sessions;
   sessionsEl.innerHTML = "";
 
   for (const row of sessions) {
@@ -116,6 +124,7 @@ function renderSessions(sessions, apiBase, teacherKey) {
 }
 
 function renderLogs(logs) {
+  currentSelectedLogs = logs;
   logsEl.innerHTML = "";
 
   for (const row of logs) {
@@ -129,6 +138,26 @@ function renderLogs(logs) {
       <p class="meta">End cash: ${money(row.end_cash)}</p>
     `;
     logsEl.appendChild(card);
+  }
+}
+
+function renderRubric(rows) {
+  rubricListEl.innerHTML = "";
+  if (!rows.length) {
+    rubricListEl.innerHTML = '<article class="log-item">No student sessions found for this assignment yet.</article>';
+    return;
+  }
+
+  for (const row of rows) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    card.innerHTML = `
+      <strong>${row.player_name} - ${row.letter_grade}</strong>
+      <p class="meta">Score: ${row.score} | Band: ${row.performance_band}</p>
+      <p class="meta">Day: ${row.day} | Cash: ${money(row.cash)} | Debt: ${money(row.debt)} | Stress: ${row.stress} | Status: ${row.status}</p>
+      <p class="meta">Session: ${row.session_id}</p>
+    `;
+    rubricListEl.appendChild(card);
   }
 }
 
@@ -213,6 +242,111 @@ async function loadSessionLogs(apiBase, teacherKey, sessionId) {
   } catch (err) {
     alert(err.message || "Failed to load session logs");
   }
+}
+
+async function loadAssignmentRubric() {
+  const apiBase = apiBaseInput.value.trim();
+  const teacherKey = teacherKeyInput.value;
+  const assignmentCode = rubricAssignmentCodeInput.value.trim().toUpperCase();
+
+  if (!teacherKey) {
+    alert("Teacher key is required");
+    return;
+  }
+  if (!assignmentCode) {
+    alert("Assignment code is required");
+    return;
+  }
+
+  try {
+    const rows = await fetchJson(`${apiBase}/api/teacher/assignments/${assignmentCode}/rubric?limit=300`, teacherKey);
+    renderRubric(rows);
+  } catch (err) {
+    alert(err.message || "Failed to load rubric");
+  }
+}
+
+function toCsvValue(value) {
+  const text = String(value ?? "");
+  if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+    return `"${text.replaceAll("\"", "\"\"")}"`;
+  }
+  return text;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const lines = [headers.join(",")];
+  for (const row of rows) {
+    lines.push(row.map(toCsvValue).join(","));
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportSessionsCsv() {
+  if (!currentSessions.length) {
+    alert("Load dashboard first to export sessions.");
+    return;
+  }
+  downloadCsv(
+    "financegame_sessions.csv",
+    ["session_id", "player_name", "city", "status", "day", "cash", "stress", "score", "class_code", "assignment_code"],
+    currentSessions.map((row) => [
+      row.session_id,
+      row.player_name,
+      row.city,
+      row.status,
+      row.day,
+      row.cash,
+      row.stress,
+      row.score,
+      row.class_code || "",
+      row.assignment_code || "",
+    ]),
+  );
+}
+
+function exportLogsCsv() {
+  if (!currentSelectedLogs.length) {
+    alert("Select a session and load day logs first.");
+    return;
+  }
+  downloadCsv(
+    "financegame_day_logs.csv",
+    [
+      "day",
+      "event_title",
+      "event_text",
+      "gross_income",
+      "platform_fees",
+      "variable_costs",
+      "household_costs",
+      "tax_reserve",
+      "event_cash_impact",
+      "end_cash",
+      "created_at",
+    ],
+    currentSelectedLogs.map((row) => [
+      row.day,
+      row.event_title,
+      row.event_text,
+      row.gross_income,
+      row.platform_fees,
+      row.variable_costs,
+      row.household_costs,
+      row.tax_reserve,
+      row.event_cash_impact,
+      row.end_cash,
+      row.created_at,
+    ]),
+  );
 }
 
 async function createClassroom() {
@@ -321,6 +455,16 @@ createAssignmentBtn.addEventListener("click", () => {
     alert("Unexpected error while creating assignment");
   });
 });
+
+loadRubricBtn.addEventListener("click", () => {
+  loadAssignmentRubric().catch((err) => {
+    console.error(err);
+    alert("Unexpected error while loading rubric");
+  });
+});
+
+exportSessionsCsvBtn.addEventListener("click", exportSessionsCsv);
+exportLogsCsvBtn.addEventListener("click", exportLogsCsv);
 
 classListEl.addEventListener("click", (event) => {
   const target = event.target;

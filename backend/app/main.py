@@ -16,6 +16,7 @@ from .repository import GameRepository
 from .schemas import (
     AdvanceDayRequest,
     AdvanceDayResponse,
+    AssignmentRubricRow,
     AssignmentSummary,
     ClassroomSummary,
     CreateAssignmentRequest,
@@ -167,6 +168,19 @@ def list_assignments(
     _require_teacher_key(x_teacher_key)
     repo = GameRepository(db)
     return repo.list_assignments(class_code=class_code)
+
+
+@app.get("/api/teacher/assignments/{assignment_code}/rubric", response_model=list[AssignmentRubricRow])
+def assignment_rubric(
+    assignment_code: str,
+    limit: int = 200,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[AssignmentRubricRow]:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    safe_limit = max(1, min(limit, 400))
+    return repo.assignment_rubric(assignment_code=assignment_code, limit=safe_limit)
 
 
 @app.get("/api/teacher/overview", response_model=TeacherOverviewResponse)

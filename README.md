@@ -92,6 +92,7 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 - `GET /api/teacher/classes` (header: `x-teacher-key`)
 - `POST /api/teacher/assignments` (header: `x-teacher-key`)
 - `GET /api/teacher/assignments` (header: `x-teacher-key`)
+- `GET /api/teacher/assignments/{assignment_code}/rubric` (header: `x-teacher-key`)
 - `GET /api/teacher/overview` (header: `x-teacher-key`)
 - `GET /api/teacher/sessions` (header: `x-teacher-key`)
 - `GET /api/teacher/sessions/{session_id}/logs` (header: `x-teacher-key`)
@@ -105,6 +106,7 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
    - Free play (leave codes empty), or
    - Classroom run (enter both class + assignment code).
 5. Teacher dashboard shows all sessions and per-day logs in real time.
+6. Teacher can open assignment rubric and export sessions/day-logs as CSV.
 
 ## Documents
 

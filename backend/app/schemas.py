@@ -96,6 +96,20 @@ class AssignmentSummary(BaseModel):
     created_at: datetime
 
 
+class AssignmentRubricRow(BaseModel):
+    session_id: str
+    player_name: str
+    day: int
+    cash: float
+    debt: float
+    stress: int
+    score: int
+    letter_grade: Literal["A", "B", "C", "D", "F"]
+    performance_band: str
+    status: str
+    updated_at: datetime
+
+
 class TeacherSessionSummary(BaseModel):
     session_id: str
     player_name: str
