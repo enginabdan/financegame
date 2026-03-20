@@ -1,1 +1,5 @@
 .env
+backend/financegame.db
+.firebase/
+__pycache__/
+*.pyc

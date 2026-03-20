@@ -17,12 +17,20 @@ function renderState(state, score = null) {
   const cells = [
     { label: "Day", value: `${state.day}/30`, className: "day" },
     { label: "Cash", value: money(state.cash), className: "cash" },
+    { label: "Tax Reserve", value: money(state.tax_reserve), className: "day" },
+    { label: "Debt", value: money(state.debt), className: "stress" },
     { label: "Stress", value: state.stress, className: "stress" },
     { label: "Status", value: state.status, className: "status" },
   ];
 
   if (typeof score === "number") {
     cells.push({ label: "Score", value: `${score}/100`, className: "day" });
+  }
+  if (state.class_code) {
+    cells.push({ label: "Class", value: state.class_code, className: "status" });
+  }
+  if (state.assignment_code) {
+    cells.push({ label: "Assignment", value: state.assignment_code, className: "day" });
   }
 
   for (const cell of cells) {
@@ -49,15 +57,28 @@ function addLog(result, score) {
 async function startGame() {
   const playerName = document.getElementById("playerName").value || "Student";
   const city = document.getElementById("city").value || "Charlotte, NC";
+  const classCode = (document.getElementById("classCode").value || "").trim().toUpperCase();
+  const assignmentCode = (document.getElementById("assignmentCode").value || "").trim().toUpperCase();
 
-  const response = await fetch(`${API_BASE}/api/new-game`, {
+  const useAssignmentJoin = classCode.length > 0 || assignmentCode.length > 0;
+  if (useAssignmentJoin && (!classCode || !assignmentCode)) {
+    alert("Enter both Class Code and Assignment Code, or leave both empty.");
+    return;
+  }
+
+  const endpoint = useAssignmentJoin ? "/api/student/join-assignment" : "/api/new-game";
+  const payload = useAssignmentJoin
+    ? { player_name: playerName, class_code: classCode, assignment_code: assignmentCode }
+    : { player_name: playerName, city };
+  const response = await fetch(`${API_BASE}${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player_name: playerName, city }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    alert("Failed to start game");
+    const body = await response.json().catch(() => ({}));
+    alert(body.detail || "Failed to start game");
     return;
   }
 

@@ -1,10 +1,24 @@
 const loadBtn = document.getElementById("loadBtn");
+const createClassBtn = document.getElementById("createClassBtn");
+const createAssignmentBtn = document.getElementById("createAssignmentBtn");
+
 const overviewEl = document.getElementById("overview");
 const sessionsEl = document.getElementById("sessions");
 const logsEl = document.getElementById("logs");
+const classListEl = document.getElementById("classList");
+const assignmentListEl = document.getElementById("assignmentList");
+
 const apiBaseInput = document.getElementById("apiBase");
 const teacherKeyInput = document.getElementById("teacherKey");
 const rememberAccessInput = document.getElementById("rememberAccess");
+
+const classNameInput = document.getElementById("classNameInput");
+const assignClassCodeInput = document.getElementById("assignClassCodeInput");
+const assignTitleInput = document.getElementById("assignTitleInput");
+const assignCityInput = document.getElementById("assignCityInput");
+const assignStartCashInput = document.getElementById("assignStartCashInput");
+const assignDurationInput = document.getElementById("assignDurationInput");
+
 const defaultApiBase = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 const STORAGE_API_BASE = "financegame_teacher_api_base";
 const STORAGE_TEACHER_KEY = "financegame_teacher_key";
@@ -32,16 +46,58 @@ function renderOverview(overview) {
   }
 }
 
+function renderClasses(classes) {
+  classListEl.innerHTML = "";
+  if (!classes.length) {
+    classListEl.innerHTML = '<article class="log-item">No classes created yet.</article>';
+    return;
+  }
+
+  for (const cls of classes) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    card.innerHTML = `
+      <strong>${cls.class_name}</strong>
+      <p class="meta">Class Code: <strong>${cls.class_code}</strong></p>
+      <p class="meta">Assignments: ${cls.assignment_count} (Active: ${cls.active_assignment_count})</p>
+    `;
+    classListEl.appendChild(card);
+  }
+}
+
+function renderAssignments(assignments) {
+  assignmentListEl.innerHTML = "";
+  if (!assignments.length) {
+    assignmentListEl.innerHTML = '<article class="log-item">No assignments created yet.</article>';
+    return;
+  }
+
+  for (const item of assignments) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    card.innerHTML = `
+      <strong>${item.title}</strong>
+      <p class="meta">Class: ${item.class_code} | Assignment Code: <strong>${item.assignment_code}</strong></p>
+      <p class="meta">City: ${item.city} | Start Cash: ${money(item.start_cash)} | Duration: ${item.duration_days} days</p>
+      <p class="meta">Enrolled Students: ${item.enrolled_sessions}</p>
+    `;
+    assignmentListEl.appendChild(card);
+  }
+}
+
 function renderSessions(sessions, apiBase, teacherKey) {
   sessionsEl.innerHTML = "";
 
   for (const row of sessions) {
+    const classMeta = row.class_code ? ` | Class: ${row.class_code}` : "";
+    const assignMeta = row.assignment_code ? ` | Assignment: ${row.assignment_code}` : "";
+
     const card = document.createElement("article");
     card.className = "log-item";
     card.innerHTML = `
       <strong>${row.player_name} (${row.city})</strong>
       <p class="meta">Session: ${row.session_id}</p>
-      <p class="meta">Status: ${row.status} | Day: ${row.day} | Cash: ${money(row.cash)} | Score: ${row.score}</p>
+      <p class="meta">Status: ${row.status} | Day: ${row.day} | Cash: ${money(row.cash)} | Score: ${row.score}${classMeta}${assignMeta}</p>
       <button data-session-id="${row.session_id}">View Day Logs</button>
     `;
 
@@ -68,10 +124,12 @@ function renderLogs(logs) {
   }
 }
 
-async function fetchJson(url, teacherKey) {
+async function fetchJson(url, teacherKey, options = {}) {
   const res = await fetch(url, {
+    ...options,
     headers: {
       "x-teacher-key": teacherKey,
+      ...(options.headers || {}),
     },
   });
 
@@ -83,15 +141,7 @@ async function fetchJson(url, teacherKey) {
   return await res.json();
 }
 
-async function loadDashboard() {
-  const apiBase = apiBaseInput.value.trim();
-  const teacherKey = teacherKeyInput.value;
-
-  if (!teacherKey) {
-    alert("Teacher key is required");
-    return;
-  }
-
+function persistAccess(apiBase, teacherKey) {
   if (rememberAccessInput.checked) {
     localStorage.setItem(STORAGE_API_BASE, apiBase);
     localStorage.setItem(STORAGE_TEACHER_KEY, teacherKey);
@@ -101,6 +151,28 @@ async function loadDashboard() {
     localStorage.removeItem(STORAGE_TEACHER_KEY);
     localStorage.removeItem(STORAGE_REMEMBER);
   }
+}
+
+async function loadClassAndAssignments(apiBase, teacherKey) {
+  const [classes, assignments] = await Promise.all([
+    fetchJson(`${apiBase}/api/teacher/classes`, teacherKey),
+    fetchJson(`${apiBase}/api/teacher/assignments`, teacherKey),
+  ]);
+
+  renderClasses(classes);
+  renderAssignments(assignments);
+}
+
+async function loadDashboard() {
+  const apiBase = apiBaseInput.value.trim();
+  const teacherKey = teacherKeyInput.value;
+
+  if (!teacherKey) {
+    alert("Teacher key is required");
+    return;
+  }
+
+  persistAccess(apiBase, teacherKey);
 
   try {
     const [overview, sessions] = await Promise.all([
@@ -110,6 +182,7 @@ async function loadDashboard() {
 
     renderOverview(overview);
     renderSessions(sessions, apiBase, teacherKey);
+    await loadClassAndAssignments(apiBase, teacherKey);
     logsEl.innerHTML = "";
   } catch (err) {
     alert(err.message || "Failed to load dashboard");
@@ -125,12 +198,79 @@ async function loadSessionLogs(apiBase, teacherKey, sessionId) {
   }
 }
 
-loadBtn.addEventListener("click", () => {
-  loadDashboard().catch((err) => {
-    console.error(err);
-    alert("Unexpected error while loading dashboard");
-  });
-});
+async function createClassroom() {
+  const apiBase = apiBaseInput.value.trim();
+  const teacherKey = teacherKeyInput.value;
+  const className = classNameInput.value.trim();
+
+  if (!teacherKey) {
+    alert("Teacher key is required");
+    return;
+  }
+  if (!className) {
+    alert("Class name is required");
+    return;
+  }
+
+  persistAccess(apiBase, teacherKey);
+
+  try {
+    const cls = await fetchJson(`${apiBase}/api/teacher/classes`, teacherKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ class_name: className }),
+    });
+
+    classNameInput.value = "";
+    assignClassCodeInput.value = cls.class_code;
+    await loadClassAndAssignments(apiBase, teacherKey);
+    alert(`Class created. Code: ${cls.class_code}`);
+  } catch (err) {
+    alert(err.message || "Failed to create class");
+  }
+}
+
+async function createAssignment() {
+  const apiBase = apiBaseInput.value.trim();
+  const teacherKey = teacherKeyInput.value;
+
+  const classCode = assignClassCodeInput.value.trim().toUpperCase();
+  const title = assignTitleInput.value.trim();
+  const city = assignCityInput.value.trim() || "Charlotte, NC";
+  const startCash = Number(assignStartCashInput.value || 1800);
+  const durationDays = Number(assignDurationInput.value || 30);
+
+  if (!teacherKey) {
+    alert("Teacher key is required");
+    return;
+  }
+  if (!classCode || !title) {
+    alert("Class code and assignment title are required");
+    return;
+  }
+
+  persistAccess(apiBase, teacherKey);
+
+  try {
+    const assignment = await fetchJson(`${apiBase}/api/teacher/assignments`, teacherKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        class_code: classCode,
+        title,
+        city,
+        start_cash: startCash,
+        duration_days: durationDays,
+      }),
+    });
+
+    assignTitleInput.value = "";
+    await loadClassAndAssignments(apiBase, teacherKey);
+    alert(`Assignment created. Code: ${assignment.assignment_code}`);
+  } catch (err) {
+    alert(err.message || "Failed to create assignment");
+  }
+}
 
 function restoreAccessFields() {
   const remember = localStorage.getItem(STORAGE_REMEMBER) === "1";
@@ -143,5 +283,26 @@ function restoreAccessFields() {
     teacherKeyInput.value = savedTeacherKey;
   }
 }
+
+loadBtn.addEventListener("click", () => {
+  loadDashboard().catch((err) => {
+    console.error(err);
+    alert("Unexpected error while loading dashboard");
+  });
+});
+
+createClassBtn.addEventListener("click", () => {
+  createClassroom().catch((err) => {
+    console.error(err);
+    alert("Unexpected error while creating class");
+  });
+});
+
+createAssignmentBtn.addEventListener("click", () => {
+  createAssignment().catch((err) => {
+    console.error(err);
+    alert("Unexpected error while creating assignment");
+  });
+});
 
 restoreAccessFields();

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +9,12 @@ from pydantic import BaseModel, Field
 class NewGameRequest(BaseModel):
     city: str = "Charlotte, NC"
     player_name: str = "Player"
+
+
+class StudentJoinAssignmentRequest(BaseModel):
+    player_name: str = "Player"
+    class_code: str = Field(min_length=4, max_length=24)
+    assignment_code: str = Field(min_length=4, max_length=24)
 
 
 class DayAllocation(BaseModel):
@@ -45,12 +51,46 @@ class GameState(BaseModel):
     debt: float = 0.0
     stress: int = 20
     status: Literal["active", "completed", "failed"] = "active"
+    class_code: Optional[str] = None
+    assignment_code: Optional[str] = None
 
 
 class AdvanceDayResponse(BaseModel):
     state: GameState
     result: DailyResult
     score: int
+
+
+class CreateClassroomRequest(BaseModel):
+    class_name: str = Field(min_length=2, max_length=120)
+
+
+class ClassroomSummary(BaseModel):
+    class_code: str
+    class_name: str
+    assignment_count: int
+    active_assignment_count: int
+    created_at: datetime
+
+
+class CreateAssignmentRequest(BaseModel):
+    class_code: str = Field(min_length=4, max_length=24)
+    title: str = Field(min_length=2, max_length=120)
+    city: str = "Charlotte, NC"
+    start_cash: float = Field(default=1800.0, ge=200, le=10000)
+    duration_days: int = Field(default=30, ge=7, le=90)
+
+
+class AssignmentSummary(BaseModel):
+    assignment_code: str
+    class_code: str
+    title: str
+    city: str
+    start_cash: float
+    duration_days: int
+    is_active: bool
+    enrolled_sessions: int
+    created_at: datetime
 
 
 class TeacherSessionSummary(BaseModel):
@@ -62,6 +102,8 @@ class TeacherSessionSummary(BaseModel):
     cash: float
     stress: int
     score: int
+    class_code: Optional[str] = None
+    assignment_code: Optional[str] = None
     updated_at: datetime
 
 

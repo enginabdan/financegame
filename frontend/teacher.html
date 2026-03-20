@@ -39,6 +39,50 @@
       </section>
 
       <section class="panel">
+        <h2>Class Setup</h2>
+        <div class="grid two">
+          <label>
+            Class Name
+            <input id="classNameInput" placeholder="e.g., Finance Period 3" />
+          </label>
+          <div>
+            <button id="createClassBtn">Create Class</button>
+          </div>
+        </div>
+        <div id="classList" class="log" style="margin-top: 12px"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Assignment Setup</h2>
+        <div class="grid two">
+          <label>
+            Class Code
+            <input id="assignClassCodeInput" placeholder="e.g., A1B2C3" />
+          </label>
+          <label>
+            Assignment Title
+            <input id="assignTitleInput" placeholder="Week 1 Budget Challenge" />
+          </label>
+        </div>
+        <div class="grid three" style="margin-top: 10px">
+          <label>
+            City
+            <input id="assignCityInput" value="Charlotte, NC" />
+          </label>
+          <label>
+            Start Cash
+            <input id="assignStartCashInput" type="number" value="1800" min="200" max="10000" />
+          </label>
+          <label>
+            Duration (days)
+            <input id="assignDurationInput" type="number" value="30" min="7" max="90" />
+          </label>
+        </div>
+        <button id="createAssignmentBtn">Create Assignment</button>
+        <div id="assignmentList" class="log" style="margin-top: 12px"></div>
+      </section>
+
+      <section class="panel">
         <h2>Overview</h2>
         <div id="overview" class="stats"></div>
       </section>

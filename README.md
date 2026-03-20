@@ -33,9 +33,9 @@ Household context includes:
 
 - Frontend: Vanilla HTML/CSS/JS
 - Backend: FastAPI (Python)
-- Database: Postgres on Render (SQLite fallback in local dev if `DATABASE_URL` is not set)
+- Database: SQLite by default (`backend/financegame.db`), Postgres optional via `DATABASE_URL`
 - AI layer: OpenAI API (optional fallback-safe)
-- Deployment target: Render (backend + static site)
+- Deployment target: Firebase Hosting (frontend) + Google Cloud Run (backend)
 - Domain target: GoDaddy-managed domain (e.g., bosembo.net)
 - School landing page: Google Sites linking into the game
 
@@ -85,10 +85,25 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 
 - `GET /health`
 - `POST /api/new-game`
+- `POST /api/student/join-assignment`
 - `POST /api/advance-day`
+- `POST /api/teacher/classes` (header: `x-teacher-key`)
+- `GET /api/teacher/classes` (header: `x-teacher-key`)
+- `POST /api/teacher/assignments` (header: `x-teacher-key`)
+- `GET /api/teacher/assignments` (header: `x-teacher-key`)
 - `GET /api/teacher/overview` (header: `x-teacher-key`)
 - `GET /api/teacher/sessions` (header: `x-teacher-key`)
 - `GET /api/teacher/sessions/{session_id}/logs` (header: `x-teacher-key`)
+
+## Classroom Flow
+
+1. Teacher opens `/teacher.html`, enters API base URL and `TEACHER_API_KEY`.
+2. Teacher creates a class and gets a `CLASS_CODE`.
+3. Teacher creates an assignment under that class and gets an `ASSIGNMENT_CODE`.
+4. Student opens the game page and starts either:
+   - Free play (leave codes empty), or
+   - Classroom run (enter both class + assignment code).
+5. Teacher dashboard shows all sessions and per-day logs in real time.
 
 ## Documents
 
@@ -97,4 +112,4 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 
 ## Status
 
-Iteration 2: persistent sessions + teacher dashboard endpoints + Render Postgres wiring.
+Iteration 3: class/assignment flow + stronger daily simulation economics + teacher setup panel.
