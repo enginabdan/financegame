@@ -2,7 +2,13 @@ const loadBtn = document.getElementById("loadBtn");
 const overviewEl = document.getElementById("overview");
 const sessionsEl = document.getElementById("sessions");
 const logsEl = document.getElementById("logs");
+const apiBaseInput = document.getElementById("apiBase");
+const teacherKeyInput = document.getElementById("teacherKey");
+const rememberAccessInput = document.getElementById("rememberAccess");
 const defaultApiBase = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
+const STORAGE_API_BASE = "financegame_teacher_api_base";
+const STORAGE_TEACHER_KEY = "financegame_teacher_key";
+const STORAGE_REMEMBER = "financegame_teacher_remember";
 
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
@@ -78,12 +84,22 @@ async function fetchJson(url, teacherKey) {
 }
 
 async function loadDashboard() {
-  const apiBase = document.getElementById("apiBase").value.trim();
-  const teacherKey = document.getElementById("teacherKey").value;
+  const apiBase = apiBaseInput.value.trim();
+  const teacherKey = teacherKeyInput.value;
 
   if (!teacherKey) {
     alert("Teacher key is required");
     return;
+  }
+
+  if (rememberAccessInput.checked) {
+    localStorage.setItem(STORAGE_API_BASE, apiBase);
+    localStorage.setItem(STORAGE_TEACHER_KEY, teacherKey);
+    localStorage.setItem(STORAGE_REMEMBER, "1");
+  } else {
+    localStorage.removeItem(STORAGE_API_BASE);
+    localStorage.removeItem(STORAGE_TEACHER_KEY);
+    localStorage.removeItem(STORAGE_REMEMBER);
   }
 
   try {
@@ -116,4 +132,16 @@ loadBtn.addEventListener("click", () => {
   });
 });
 
-document.getElementById("apiBase").value = defaultApiBase;
+function restoreAccessFields() {
+  const remember = localStorage.getItem(STORAGE_REMEMBER) === "1";
+  const savedApiBase = localStorage.getItem(STORAGE_API_BASE);
+  const savedTeacherKey = localStorage.getItem(STORAGE_TEACHER_KEY);
+
+  rememberAccessInput.checked = remember;
+  apiBaseInput.value = savedApiBase || defaultApiBase;
+  if (remember && savedTeacherKey) {
+    teacherKeyInput.value = savedTeacherKey;
+  }
+}
+
+restoreAccessFields();
