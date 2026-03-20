@@ -1,0 +1,144 @@
+:root {
+  --blue: #0f4c81;
+  --orange: #f57c00;
+  --yellow: #fbc02d;
+  --green: #2e7d32;
+  --ink: #102027;
+  --paper: #f9fbfd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  color: var(--ink);
+  background: linear-gradient(150deg, #eef7ff 0%, #fff6df 55%, #effbf2 100%);
+}
+
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.hero {
+  background: linear-gradient(120deg, var(--blue), #1a73b7);
+  color: white;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.hero h1 {
+  margin: 0 0 10px;
+}
+
+.panel {
+  background: var(--paper);
+  border: 2px solid #d9e3ea;
+  border-radius: 14px;
+  padding: 16px;
+}
+
+h2 {
+  margin-top: 0;
+}
+
+.grid {
+  display: grid;
+  gap: 10px;
+}
+
+.grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+input {
+  padding: 10px;
+  border: 1px solid #b0bec5;
+  border-radius: 8px;
+}
+
+button {
+  margin-top: 12px;
+  background: var(--orange);
+  color: white;
+  border: none;
+  padding: 11px 16px;
+  border-radius: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(0.95);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  border-radius: 10px;
+  padding: 10px;
+  color: white;
+  font-weight: 700;
+}
+
+.stat.day {
+  background: var(--blue);
+}
+
+.stat.cash {
+  background: var(--green);
+}
+
+.stat.stress {
+  background: var(--yellow);
+  color: #3e2723;
+}
+
+.stat.status {
+  background: var(--orange);
+}
+
+.log {
+  display: grid;
+  gap: 10px;
+}
+
+.log-item {
+  border-left: 5px solid var(--blue);
+  background: #ffffff;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.meta {
+  font-size: 0.92rem;
+  opacity: 0.85;
+}
+
+@media (max-width: 760px) {
+  .grid.two,
+  .grid.three,
+  .stats {
+    grid-template-columns: 1fr;
+  }
+}

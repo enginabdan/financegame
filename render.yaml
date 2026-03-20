@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: financegame-api
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: ALLOWED_ORIGINS
+        value: https://play.bosembo.net
+      - key: DATABASE_URL
+        fromDatabase:
+          name: financegame-db
+          property: connectionString
+      - key: TEACHER_API_KEY
+        sync: false
+
+  - type: web
+    name: financegame-web
+    env: static
+    rootDir: frontend
+    staticPublishPath: .
+
+databases:
+  - name: financegame-db
+    plan: free

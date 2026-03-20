@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hustle & Home: Charlotte 30</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="hero">
+        <h1>Hustle & Home: Charlotte 30</h1>
+        <p>
+          Manage 30 days of gig work, online selling, and family expenses. Make smart decisions under
+          pressure.
+        </p>
+        <p><a href="./teacher.html" style="color: #fbc02d; font-weight: 700">Open Teacher Dashboard</a></p>
+      </section>
+
+      <section class="panel">
+        <h2>Start Game</h2>
+        <div class="grid two">
+          <label>
+            Player Name
+            <input id="playerName" value="Student" />
+          </label>
+          <label>
+            City
+            <input id="city" value="Charlotte, NC" />
+          </label>
+        </div>
+        <button id="startBtn">Start New Game</button>
+      </section>
+
+      <section class="panel" id="statePanel">
+        <h2>Game State</h2>
+        <div class="stats" id="stats"></div>
+      </section>
+
+      <section class="panel" id="decisionPanel">
+        <h2>Daily Allocation</h2>
+        <div class="grid three">
+          <label>
+            Gig Hours
+            <input id="gigHours" type="number" min="0" max="12" value="4" />
+          </label>
+          <label>
+            Delivery Hours
+            <input id="deliveryHours" type="number" min="0" max="12" value="4" />
+          </label>
+          <label>
+            Marketplace Hours
+            <input id="marketHours" type="number" min="0" max="12" value="2" />
+          </label>
+        </div>
+        <button id="advanceBtn">Advance Day</button>
+      </section>
+
+      <section class="panel">
+        <h2>Daily Log</h2>
+        <div id="log" class="log"></div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

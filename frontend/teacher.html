@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Teacher Dashboard | Hustle & Home</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="hero">
+        <h1>Teacher Dashboard</h1>
+        <p>Monitor student runs, outcomes, and day-by-day decisions.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Access</h2>
+        <div class="grid two">
+          <label>
+            API Base URL
+            <input id="apiBase" value="http://127.0.0.1:8000" />
+          </label>
+          <label>
+            Teacher Key
+            <input id="teacherKey" type="password" />
+          </label>
+        </div>
+        <button id="loadBtn">Load Dashboard</button>
+      </section>
+
+      <section class="panel">
+        <h2>Overview</h2>
+        <div id="overview" class="stats"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Sessions</h2>
+        <div id="sessions" class="log"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Selected Session Logs</h2>
+        <div id="logs" class="log"></div>
+      </section>
+    </main>
+
+    <script src="./teacher.js"></script>
+  </body>
+</html>
