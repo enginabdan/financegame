@@ -2,6 +2,7 @@ const loadBtn = document.getElementById("loadBtn");
 const overviewEl = document.getElementById("overview");
 const sessionsEl = document.getElementById("sessions");
 const logsEl = document.getElementById("logs");
+const defaultApiBase = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
@@ -114,3 +115,5 @@ loadBtn.addEventListener("click", () => {
     alert("Unexpected error while loading dashboard");
   });
 });
+
+document.getElementById("apiBase").value = defaultApiBase;

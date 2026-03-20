@@ -1,4 +1,4 @@
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 
 let sessionId = null;
 
