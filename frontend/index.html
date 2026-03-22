@@ -21,7 +21,6 @@
           pressure.
         </p>
         <p><a href="./teacher.html" style="color: #fbc02d; font-weight: 700">Open Teacher Dashboard</a></p>
-        <p><a href="./sprint.html" style="color: #9be56d; font-weight: 700">Open 1-Hour Profit Sprint</a></p>
       </section>
 
       <section class="panel">
@@ -108,9 +107,58 @@
         <h2>Weekly Report</h2>
         <div id="weeklyReport" class="log"></div>
       </section>
+
+      <section class="hero">
+        <h1>1-Hour Profit Sprint (30-Day Simulation)</h1>
+        <p>
+          Pick one live opportunity each simulated day. The system tracks your hidden optimal benchmark and scores
+          your decision quality at the end.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Start Sprint Assignment</h2>
+        <div class="grid three">
+          <label>
+            Student Name
+            <input id="sprintPlayerName" value="Student" />
+          </label>
+          <label>
+            Total Days
+            <input id="sprintTotalDays" type="number" value="30" min="7" max="45" />
+          </label>
+          <label>
+            Assignment Minutes
+            <input id="sprintAssignmentMinutes" type="number" value="60" min="20" max="120" />
+          </label>
+        </div>
+        <button id="startSprintBtn">Start Sprint</button>
+      </section>
+
+      <section class="panel">
+        <h2>Sprint Progress</h2>
+        <div id="sprintProgressStats" class="stats"></div>
+        <p id="sprintDayBrief" class="meta"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Sprint Opportunities</h2>
+        <div id="sprintOffers" class="log"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Sprint Decision Log</h2>
+        <div id="sprintDecisionLog" class="log"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Sprint Final Evaluation</h2>
+        <div id="sprintFinalResult" class="log"></div>
+      </section>
     </main>
 
     <script src="./runtime-config.js"></script>
     <script src="./app.js"></script>
+    <script src="./sprint.js"></script>
   </body>
 </html>

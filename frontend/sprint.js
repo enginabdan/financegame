@@ -1,11 +1,11 @@
 const API_BASE = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 
 const startBtn = document.getElementById("startSprintBtn");
-const offersEl = document.getElementById("offers");
-const progressStatsEl = document.getElementById("progressStats");
-const dayBriefEl = document.getElementById("dayBrief");
-const decisionLogEl = document.getElementById("decisionLog");
-const finalResultEl = document.getElementById("finalResult");
+const offersEl = document.getElementById("sprintOffers");
+const progressStatsEl = document.getElementById("sprintProgressStats");
+const dayBriefEl = document.getElementById("sprintDayBrief");
+const decisionLogEl = document.getElementById("sprintDecisionLog");
+const finalResultEl = document.getElementById("sprintFinalResult");
 
 let sprintState = null;
 
@@ -94,9 +94,9 @@ async function fetchJson(url, options = {}) {
 }
 
 async function startSprint() {
-  const playerName = document.getElementById("playerName").value || "Student";
-  const totalDays = Number(document.getElementById("totalDays").value || 30);
-  const assignmentMinutes = Number(document.getElementById("assignmentMinutes").value || 60);
+  const playerName = document.getElementById("sprintPlayerName").value || "Student";
+  const totalDays = Number(document.getElementById("sprintTotalDays").value || 30);
+  const assignmentMinutes = Number(document.getElementById("sprintAssignmentMinutes").value || 60);
 
   const state = await fetchJson(`${API_BASE}/api/strategy/start`, {
     method: "POST",
@@ -134,9 +134,11 @@ async function chooseOffer(offerId, title) {
   }
 }
 
-startBtn.addEventListener("click", () => {
-  startSprint().catch((err) => {
-    console.error(err);
-    alert(err.message || "Failed to start sprint");
+if (startBtn && offersEl && progressStatsEl && dayBriefEl && decisionLogEl && finalResultEl) {
+  startBtn.addEventListener("click", () => {
+    startSprint().catch((err) => {
+      console.error(err);
+      alert(err.message || "Failed to start sprint");
+    });
   });
-});
+}
