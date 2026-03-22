@@ -94,6 +94,39 @@ h2 {
   font-size: 1.75rem;
 }
 
+.collapsible {
+  width: 100%;
+}
+
+.collapsible summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  margin: 0;
+  color: #15364d;
+  font-size: 1.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible summary::before {
+  content: "▸";
+  color: var(--blue);
+  font-size: 1.1rem;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
+.collapsible[open] summary::before {
+  content: "▾";
+}
+
 .grid {
   display: grid;
   gap: 12px;
@@ -405,6 +438,10 @@ button.danger {
 
   .hero h1,
   h2 {
+    font-size: 1.5rem;
+  }
+
+  .collapsible summary {
     font-size: 1.5rem;
   }
 
