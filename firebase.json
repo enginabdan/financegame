@@ -16,6 +16,13 @@
           }
         ]
       }
+    ],
+    "redirects": [
+      {
+        "source": "/sprint.html",
+        "destination": "/",
+        "type": 301
+      }
     ]
   }
 }

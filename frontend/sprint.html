@@ -3,78 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Profit Sprint Assignment | Hustle & Home</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Redirecting to Main Game</title>
+    <meta http-equiv="refresh" content="0; url=/" />
+    <script>
+      window.location.replace("/");
+    </script>
   </head>
   <body>
-    <main class="container">
-      <section class="hero">
-        <h1>1-Hour Profit Sprint (30-Day Simulation)</h1>
-        <p>
-          You will receive daily demand/sales opportunities. Pick one each day to maximize total net profit over 30
-          simulated days.
-        </p>
-        <p><a href="./" style="color: #fbc02d; font-weight: 700">Back to Main Game</a></p>
-      </section>
-
-      <section class="panel">
-        <h2>Start Assignment</h2>
-        <div class="grid three">
-          <label>
-            Student Name
-            <input id="sprintPlayerName" value="Student" />
-          </label>
-          <label>
-            Total Days
-            <input id="sprintTotalDays" type="number" value="30" min="7" max="45" />
-          </label>
-          <label>
-            Assignment Minutes
-            <input id="sprintAssignmentMinutes" type="number" value="60" min="20" max="120" />
-          </label>
-        </div>
-        <button id="startSprintBtn">Start Sprint</button>
-      </section>
-
-      <section class="panel">
-        <h2>Progress</h2>
-        <div id="sprintProgressStats" class="stats"></div>
-        <p id="sprintDayBrief" class="meta"></p>
-      </section>
-
-      <section class="panel">
-        <h2>Today's Opportunities</h2>
-        <div id="sprintOffers" class="log"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Decision Log</h2>
-        <div id="sprintDecisionLog" class="log"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Final Evaluation</h2>
-        <div id="sprintFinalResult" class="log"></div>
-      </section>
-    </main>
-    <div id="confirmModal" class="confirm-modal" hidden>
-      <div class="confirm-modal__backdrop" data-close-confirm></div>
-      <section class="confirm-modal__card" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
-        <h3 id="confirmModalTitle" class="confirm-modal__title">Please Confirm</h3>
-        <p id="confirmModalMessage" class="confirm-modal__message"></p>
-        <div class="confirm-modal__actions">
-          <button id="confirmModalCancel" class="secondary btn-no-margin">Cancel</button>
-          <button id="confirmModalAccept" class="warn btn-no-margin">Confirm</button>
-        </div>
-      </section>
-    </div>
-    <script src="./runtime-config.js"></script>
-    <script src="./sprint.js"></script>
+    <p>Redirecting to <a href="/">main game</a>...</p>
   </body>
 </html>
