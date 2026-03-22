@@ -68,7 +68,7 @@
 
       <section class="panel">
         <h2>Firebase Login</h2>
-        <div class="grid three">
+        <div class="grid two">
           <label>
             School Email
             <input id="authEmail" type="email" placeholder="student@school.edu" />
@@ -77,19 +77,19 @@
             Password
             <input id="authPassword" type="password" placeholder="Minimum 6 chars" />
           </label>
-          <div class="actions-row mt-sm">
-            <button id="authSignInBtn" class="btn-no-margin">Sign In</button>
-            <button id="authSignUpBtn" class="secondary btn-no-margin">Sign Up</button>
-            <button id="authForgotBtn" class="secondary btn-no-margin">Forgot Password</button>
-            <button id="authSignOutBtn" class="warn btn-no-margin">Sign Out</button>
-          </div>
         </div>
         <p id="authStatus" class="meta mt-sm">Not signed in.</p>
+        <div class="actions-row mt-sm firebase-auth-actions">
+          <button id="authSignInBtn" class="btn-no-margin">Sign In</button>
+          <button id="authSignUpBtn" class="secondary btn-no-margin">Sign Up</button>
+          <button id="authForgotBtn" class="secondary btn-no-margin">Forgot Password</button>
+          <button id="authSignOutBtn" class="warn btn-no-margin">Sign Out</button>
+        </div>
       </section>
 
       <section class="panel">
         <h2>Student Profile (Required for Classwork)</h2>
-        <div class="grid three">
+        <div class="grid two">
           <label>
             First Name
             <input id="studentFirstName" value="Student" />
@@ -98,15 +98,15 @@
             Last Name
             <input id="studentLastName" value="User" />
           </label>
-          <div>
-            <button id="registerStudentBtn" class="btn-no-margin">Register / Sign In</button>
-          </div>
         </div>
-        <div class="grid two mt-sm">
+        <div class="grid mt-sm">
           <label>
             School Email
             <input id="studentSchoolEmail" placeholder="student@school.edu" />
           </label>
+        </div>
+        <div class="actions-row mt-sm">
+          <button id="registerStudentBtn" class="btn-no-margin">Register / Sign In</button>
         </div>
         <p class="meta">Use first name, last name, and school email. Student ID is generated and managed in the background.</p>
       </section>
@@ -129,7 +129,7 @@
 
       <section class="panel">
         <h2>Join Class Assignment</h2>
-        <div class="grid three">
+        <div class="grid two">
           <label>
             Student Name
             <input id="classPlayerName" value="Student" />
@@ -138,11 +138,9 @@
             Class Code
             <input id="classCode" placeholder="e.g., A1B2C3" />
           </label>
-          <div>
-            <button id="joinClassBtn" class="btn-no-margin">Join Class</button>
-          </div>
         </div>
         <div class="actions-row mt-sm">
+          <button id="joinClassBtn" class="btn-no-margin">Join Class</button>
           <button id="loadMyClassesBtn" class="secondary btn-no-margin">Load My Classes</button>
           <button id="loadClassAssignmentsBtn" class="secondary btn-no-margin">Load Class Assignments</button>
         </div>
