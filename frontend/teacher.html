@@ -31,8 +31,8 @@
             <input id="teacherKey" type="password" />
           </label>
         </div>
-        <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px; font-weight: 600">
-          <input id="rememberAccess" type="checkbox" style="width: auto" />
+        <label class="inline-check">
+          <input id="rememberAccess" type="checkbox" />
           Remember API URL and Teacher Key on this browser
         </label>
         <button id="loadBtn">Load Dashboard</button>
@@ -49,7 +49,7 @@
             <button id="createClassBtn">Create Class</button>
           </div>
         </div>
-        <div id="classList" class="log" style="margin-top: 12px"></div>
+        <div id="classList" class="log mt-sm"></div>
       </section>
 
       <section class="panel">
@@ -64,7 +64,7 @@
             <input id="assignTitleInput" placeholder="Week 1 Budget Challenge" />
           </label>
         </div>
-        <div class="grid three" style="margin-top: 10px">
+        <div class="grid three mt-sm">
           <label>
             City
             <input id="assignCityInput" value="Charlotte, NC" />
@@ -79,14 +79,14 @@
           </label>
         </div>
         <button id="createAssignmentBtn">Create Assignment</button>
-        <div id="assignmentList" class="log" style="margin-top: 12px"></div>
+        <div id="assignmentList" class="log mt-sm"></div>
       </section>
 
       <section class="panel">
         <h2>Overview</h2>
         <div class="grid two">
-          <button id="exportSessionsCsvBtn" style="margin-top: 0">Export Sessions CSV</button>
-          <button id="exportLogsCsvBtn" style="margin-top: 0">Export Selected Logs CSV</button>
+          <button id="exportSessionsCsvBtn" class="btn-no-margin">Export Sessions CSV</button>
+          <button id="exportLogsCsvBtn" class="btn-no-margin">Export Selected Logs CSV</button>
         </div>
         <div id="overview" class="stats"></div>
       </section>
@@ -112,14 +112,14 @@
             <button id="loadRubricBtn">Load Rubric</button>
           </div>
         </div>
-        <div id="rubricList" class="log" style="margin-top: 12px"></div>
+        <div id="rubricList" class="log mt-sm"></div>
       </section>
 
       <section class="panel">
         <h2>Live Sprint Leaderboard</h2>
-        <button id="loadStrategyLeaderboardBtn" style="margin-top: 0">Refresh Leaderboard</button>
-        <p class="meta" style="margin-top: 8px">Auto-refresh every 20 seconds while page is open.</p>
-        <div id="strategyLeaderboard" class="log" style="margin-top: 12px"></div>
+        <button id="loadStrategyLeaderboardBtn" class="btn-no-margin">Refresh Leaderboard</button>
+        <p class="meta mt-sm">Auto-refresh every 20 seconds while page is open.</p>
+        <div id="strategyLeaderboard" class="log mt-sm"></div>
       </section>
     </main>
 
