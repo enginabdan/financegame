@@ -233,7 +233,24 @@ function renderFinalResult(result) {
 }
 
 async function fetchJson(url, options = {}) {
-  const res = await fetch(url, options);
+  if (window.FinanceAuth?.refreshIdToken) {
+    try {
+      await window.FinanceAuth.refreshIdToken();
+    } catch (_err) {
+      // optional
+    }
+  }
+  const token = window.FinanceAuth?.getIdToken?.() || "";
+  const headers = {
+    ...(options.headers || {}),
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(url, {
+    ...options,
+    headers,
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || "Request failed");

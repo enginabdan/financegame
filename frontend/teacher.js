@@ -16,6 +16,7 @@ const purgeTrashBtn = document.getElementById("purgeTrashBtn");
 const purgeOlderTrashBtn = document.getElementById("purgeOlderTrashBtn");
 const loadRiskAlertsBtn = document.getElementById("loadRiskAlertsBtn");
 const loadAuditBtn = document.getElementById("loadAuditBtn");
+const loadEvidenceBtn = document.getElementById("loadEvidenceBtn");
 
 const overviewEl = document.getElementById("overview");
 const sessionsEl = document.getElementById("sessions");
@@ -29,6 +30,7 @@ const strategySessionReviewEl = document.getElementById("strategySessionReview")
 const trashListEl = document.getElementById("trashList");
 const riskAlertsListEl = document.getElementById("riskAlertsList");
 const auditLogListEl = document.getElementById("auditLogList");
+const evidenceListEl = document.getElementById("evidenceList");
 const trashEntityTypeFilter = document.getElementById("trashEntityTypeFilter");
 const trashSinceDaysFilter = document.getElementById("trashSinceDaysFilter");
 const trashPurgeOlderDays = document.getElementById("trashPurgeOlderDays");
@@ -36,6 +38,13 @@ const trashPurgeOlderDays = document.getElementById("trashPurgeOlderDays");
 const apiBaseInput = document.getElementById("apiBase");
 const teacherKeyInput = document.getElementById("teacherKey");
 const rememberAccessInput = document.getElementById("rememberAccess");
+const authEmailInput = document.getElementById("authEmail");
+const authPasswordInput = document.getElementById("authPassword");
+const authSignInBtn = document.getElementById("authSignInBtn");
+const authSignUpBtn = document.getElementById("authSignUpBtn");
+const authForgotBtn = document.getElementById("authForgotBtn");
+const authSignOutBtn = document.getElementById("authSignOutBtn");
+const authStatusEl = document.getElementById("authStatus");
 
 const classNameInput = document.getElementById("classNameInput");
 const assignClassCodeInput = document.getElementById("assignClassCodeInput");
@@ -52,6 +61,9 @@ const filterAssignmentCodeInput = document.getElementById("filterAssignmentCode"
 const filterSessionStatusInput = document.getElementById("filterSessionStatus");
 const riskClassCodeInput = document.getElementById("riskClassCode");
 const riskAssignmentCodeInput = document.getElementById("riskAssignmentCode");
+const evidenceClassCodeInput = document.getElementById("evidenceClassCode");
+const evidenceAssignmentCodeInput = document.getElementById("evidenceAssignmentCode");
+const evidenceStudentIdInput = document.getElementById("evidenceStudentId");
 const trashFromDateInput = document.getElementById("trashFromDate");
 const trashToDateInput = document.getElementById("trashToDate");
 const auditActionFilterInput = document.getElementById("auditActionFilter");
@@ -628,6 +640,34 @@ function renderAuditLog(items) {
   }
 }
 
+function renderEvidence(items) {
+  if (!evidenceListEl) {
+    return;
+  }
+  evidenceListEl.innerHTML = "";
+  if (!items.length) {
+    evidenceListEl.innerHTML = '<article class="log-item">No evidence found for selected filters.</article>';
+    return;
+  }
+  for (const row of items) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    const createdAt = row.created_at ? new Date(row.created_at).toLocaleString() : "-";
+    const sizeKb = Math.round((Number(row.size_bytes || 0) / 1024) * 10) / 10;
+    card.innerHTML = `
+      <strong>${row.filename || "file"}</strong>
+      <p class="meta">Student: ${row.student_id || "-"} | Class: ${row.class_code || "-"} | Assignment: ${row.assignment_code || "-"}</p>
+      <p class="meta">Uploaded: ${createdAt} | Size: ${sizeKb} KB | Type: ${row.content_type || "-"}</p>
+      <p>${row.note || ""}</p>
+      <div class="actions-row">
+        <button data-action="download-evidence" data-evidence-id="${row.evidence_id}" class="secondary btn-no-margin">Download</button>
+        <button data-action="delete-evidence" data-evidence-id="${row.evidence_id}" class="danger btn-no-margin">Delete</button>
+      </div>
+    `;
+    evidenceListEl.appendChild(card);
+  }
+}
+
 function applySessionFilters() {
   const player = (filterPlayerNameInput?.value || "").trim().toLowerCase();
   const classCode = (filterClassCodeInput?.value || "").trim().toUpperCase();
@@ -645,10 +685,19 @@ function applySessionFilters() {
 }
 
 async function fetchJson(url, teacherKey, options = {}) {
+  if (window.FinanceAuth?.refreshIdToken) {
+    try {
+      await window.FinanceAuth.refreshIdToken();
+    } catch (_err) {
+      // optional
+    }
+  }
+  const token = window.FinanceAuth?.getIdToken?.() || "";
   const res = await fetch(url, {
     ...options,
     headers: {
       "x-teacher-key": teacherKey,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
   });
@@ -659,6 +708,14 @@ async function fetchJson(url, teacherKey, options = {}) {
   }
 
   return await res.json();
+}
+
+function updateAuthStatus() {
+  if (!authStatusEl) {
+    return;
+  }
+  const email = window.FinanceAuth?.getEmail?.() || "";
+  authStatusEl.textContent = email ? `Signed in: ${email}` : "Not signed in.";
 }
 
 function persistAccess(apiBase, teacherKey) {
@@ -734,6 +791,7 @@ async function loadDashboard() {
     await loadTrash();
     await loadRiskAlerts();
     await loadAuditLog();
+    await loadEvidence();
     renderStrategySessionReview(null);
     logsEl.innerHTML = "";
   } catch (err) {
@@ -875,6 +933,82 @@ async function loadAuditLog() {
     console.error(err);
     appAlert(err.message || "Failed to load audit log");
   }
+}
+
+async function loadEvidence() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  try {
+    const params = new URLSearchParams();
+    params.set("limit", "200");
+    const classCode = (evidenceClassCodeInput?.value || "").trim().toUpperCase();
+    const assignmentCode = (evidenceAssignmentCodeInput?.value || "").trim().toUpperCase();
+    const studentId = (evidenceStudentIdInput?.value || "").trim().toUpperCase();
+    if (classCode) {
+      params.set("class_code", classCode);
+    }
+    if (assignmentCode) {
+      params.set("assignment_code", assignmentCode);
+    }
+    if (studentId) {
+      params.set("student_id", studentId);
+    }
+    const items = await fetchJson(`${apiBase}/api/teacher/evidence?${params.toString()}`, teacherKey);
+    renderEvidence(items);
+  } catch (err) {
+    console.error(err);
+    appAlert(err.message || "Failed to load evidence");
+  }
+}
+
+async function downloadEvidence(evidenceId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const res = await fetch(`${apiBase}/api/teacher/evidence/${encodeURIComponent(evidenceId)}/download`, {
+    headers: { "x-teacher-key": teacherKey },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Evidence download failed");
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename=\"?([^"]+)\"?/i);
+  const filename = filenameMatch?.[1] || "evidence.bin";
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+}
+
+async function deleteEvidence(evidenceId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const confirmDelete = await showConfirmDialog({
+    title: "Delete Evidence",
+    message: `Delete evidence ${evidenceId}?`,
+    confirmText: "Delete",
+    cancelText: "Cancel",
+    danger: true,
+  });
+  if (!confirmDelete) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  await fetchJson(`${apiBase}/api/teacher/evidence/${encodeURIComponent(evidenceId)}`, teacherKey, { method: "DELETE" });
+  appAlert("Evidence deleted.", "Success", "success");
+  await loadEvidence();
 }
 
 async function loadStrategySessionReview(sessionId) {
@@ -1715,6 +1849,11 @@ if (loadAuditBtn) {
     loadAuditLog().catch(() => {});
   });
 }
+if (loadEvidenceBtn) {
+  loadEvidenceBtn.addEventListener("click", () => {
+    loadEvidence().catch(() => {});
+  });
+}
 if (trashEntityTypeFilter) {
   trashEntityTypeFilter.addEventListener("change", () => {
     loadTrash().catch(() => {});
@@ -1948,8 +2087,80 @@ if (riskAlertsListEl) {
   });
 }
 
+if (evidenceListEl) {
+  evidenceListEl.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+    const action = target.getAttribute("data-action");
+    const evidenceId = target.getAttribute("data-evidence-id");
+    if (!evidenceId) {
+      return;
+    }
+    if (action === "download-evidence") {
+      downloadEvidence(evidenceId).catch((err) => appAlert(err.message || "Failed to download evidence"));
+      return;
+    }
+    if (action === "delete-evidence") {
+      deleteEvidence(evidenceId).catch((err) => appAlert(err.message || "Failed to delete evidence"));
+    }
+  });
+}
+
+if (authSignInBtn) {
+  authSignInBtn.addEventListener("click", () => {
+    const email = (authEmailInput?.value || "").trim();
+    const password = (authPasswordInput?.value || "").trim();
+    window.FinanceAuth?.signIn?.(email, password)
+      .then(() => {
+        updateAuthStatus();
+        appAlert("Signed in.", "Success", "success");
+      })
+      .catch((err) => appAlert(err.message || "Sign in failed"));
+  });
+}
+
+if (authSignUpBtn) {
+  authSignUpBtn.addEventListener("click", () => {
+    const email = (authEmailInput?.value || "").trim();
+    const password = (authPasswordInput?.value || "").trim();
+    window.FinanceAuth?.signUp?.(email, password)
+      .then(() => {
+        updateAuthStatus();
+        appAlert("Account created and signed in.", "Success", "success");
+      })
+      .catch((err) => appAlert(err.message || "Sign up failed"));
+  });
+}
+
+if (authForgotBtn) {
+  authForgotBtn.addEventListener("click", () => {
+    const email = (authEmailInput?.value || "").trim();
+    window.FinanceAuth?.sendPasswordReset?.(email)
+      .then(() => {
+        updateAuthStatus();
+        appAlert("Password reset email sent. Check your inbox.", "Success", "success");
+      })
+      .catch((err) => appAlert(err.message || "Could not send password reset email"));
+  });
+}
+
+if (authSignOutBtn) {
+  authSignOutBtn.addEventListener("click", () => {
+    window.FinanceAuth?.signOut?.();
+    updateAuthStatus();
+    appAlert("Signed out.", "Success", "success");
+  });
+}
+
+if (window.FinanceAuth?.onChange) {
+  window.FinanceAuth.onChange(() => updateAuthStatus());
+}
+
 restoreAccessFields();
 renderStrategySessionReview(null);
+updateAuthStatus();
 
 setInterval(() => {
   if (teacherKeyInput.value.trim()) {

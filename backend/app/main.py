@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Any, Generator, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+import firebase_admin
+from firebase_admin import auth as firebase_auth, credentials
+from google.cloud import firestore, storage
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal, init_db
 from .engine import FinanceGameEngine, StrategyAssignmentEngine
 from .repository import GameRepository
+from .firestore_repository import FirestoreGameRepository
 from .schemas import (
     ActionResponse,
     AdvanceDayRequest,
@@ -58,12 +64,33 @@ from .schemas import (
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 
+USE_FIRESTORE = os.getenv("USE_FIRESTORE", "").strip().lower() in {"1", "true", "yes", "on"} or bool(
+    os.getenv("FIREBASE_PROJECT_ID", "").strip()
+)
+if USE_FIRESTORE:
+    GameRepository = FirestoreGameRepository  # type: ignore[misc,assignment]
+
 app = FastAPI(title="Hustle & Home API", version="0.3.0")
 engine = FinanceGameEngine()
 strategy_engine = StrategyAssignmentEngine()
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://127.0.0.1:4173,http://localhost:4173").split(",")
 TEACHER_API_KEY = os.getenv("TEACHER_API_KEY", "")
+USE_FIREBASE_AUTH = os.getenv("USE_FIREBASE_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+FIREBASE_STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip()
+MAX_EVIDENCE_FILE_BYTES = 15 * 1024 * 1024
+
+if USE_FIREBASE_AUTH:
+    try:
+        if not firebase_admin._apps:
+            cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+            if cred_path:
+                firebase_admin.initialize_app(credentials.Certificate(cred_path))
+            else:
+                firebase_admin.initialize_app()
+    except Exception:
+        USE_FIREBASE_AUTH = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -76,7 +103,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event() -> None:
-    init_db()
+    if not USE_FIRESTORE:
+        init_db()
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -94,6 +122,41 @@ def _require_teacher_key(x_teacher_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Invalid teacher key")
 
 
+def _verify_firebase_token(authorization: Optional[str]) -> dict:
+    if not USE_FIREBASE_AUTH:
+        raise HTTPException(status_code=503, detail="Firebase Auth is not enabled")
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing Firebase bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing Firebase bearer token")
+    try:
+        return firebase_auth.verify_id_token(token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid Firebase token") from exc
+
+
+def _student_email_from_record(student_obj: object) -> str:
+    if isinstance(student_obj, dict):
+        return str(student_obj.get("school_email", "")).strip().lower()
+    return str(getattr(student_obj, "school_email", "")).strip().lower()
+
+
+def _require_student_access(repo: GameRepository, student_id: str, authorization: Optional[str]) -> None:
+    if not USE_FIREBASE_AUTH:
+        return
+    decoded = _verify_firebase_token(authorization)
+    token_email = str(decoded.get("email", "")).strip().lower()
+    if not token_email:
+        raise HTTPException(status_code=401, detail="Firebase token has no email")
+    student_obj = repo.get_student(student_id)
+    if student_obj is None:
+        raise HTTPException(status_code=404, detail="Student profile not found")
+    student_email = _student_email_from_record(student_obj)
+    if student_email != token_email:
+        raise HTTPException(status_code=403, detail="Student token email does not match student profile")
+
+
 def _parse_iso_datetime(value: str | None, field_name: str) -> datetime | None:
     if not value:
         return None
@@ -101,6 +164,46 @@ def _parse_iso_datetime(value: str | None, field_name: str) -> datetime | None:
         return datetime.fromisoformat(value)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} format. Use ISO datetime.") from exc
+
+
+def _require_firestore_mode() -> None:
+    if not USE_FIRESTORE:
+        raise HTTPException(status_code=400, detail="This feature requires USE_FIRESTORE=1")
+
+
+def _get_firestore_client() -> firestore.Client:
+    _require_firestore_mode()
+    return firestore.Client(project=FIREBASE_PROJECT_ID or None) if FIREBASE_PROJECT_ID else firestore.Client()
+
+
+def _resolve_storage_bucket_name() -> str:
+    if FIREBASE_STORAGE_BUCKET:
+        return FIREBASE_STORAGE_BUCKET
+    if FIREBASE_PROJECT_ID:
+        return f"{FIREBASE_PROJECT_ID}.appspot.com"
+    raise HTTPException(status_code=503, detail="FIREBASE_STORAGE_BUCKET or FIREBASE_PROJECT_ID must be set")
+
+
+def _get_storage_bucket():
+    bucket_name = _resolve_storage_bucket_name()
+    client = storage.Client(project=FIREBASE_PROJECT_ID or None) if FIREBASE_PROJECT_ID else storage.Client()
+    return client.bucket(bucket_name)
+
+
+def _sanitize_filename(filename: str) -> str:
+    base = Path(filename or "upload.bin").name
+    clean = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-")
+    return clean or "upload.bin"
+
+
+def _serialize_firestore_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _serialize_firestore_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_serialize_firestore_value(v) for v in value]
+    return value
 
 
 @app.get("/health")
@@ -118,8 +221,19 @@ def new_game(req: NewGameRequest, db: Session = Depends(get_db)) -> GameState:
 
 
 @app.post("/api/student/register", response_model=StudentProfileSummary)
-def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db)) -> StudentProfileSummary:
+def register_student(
+    req: StudentRegisterRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> StudentProfileSummary:
     repo = GameRepository(db)
+    if USE_FIREBASE_AUTH:
+        decoded = _verify_firebase_token(authorization)
+        token_email = str(decoded.get("email", "")).strip().lower()
+        if not token_email:
+            raise HTTPException(status_code=401, detail="Firebase token has no email")
+        if token_email != req.school_email.strip().lower():
+            raise HTTPException(status_code=403, detail="School email must match Firebase login email")
     try:
         return repo.register_student_with_identity(
             first_name=req.first_name,
@@ -131,8 +245,13 @@ def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db))
 
 
 @app.post("/api/student/join-class", response_model=StudentClassSummary)
-def join_class(req: StudentClassJoinRequest, db: Session = Depends(get_db)) -> StudentClassSummary:
+def join_class(
+    req: StudentClassJoinRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> StudentClassSummary:
     repo = GameRepository(db)
+    _require_student_access(repo, req.student_id, authorization)
     try:
         return repo.join_class(student_id=req.student_id, class_code=req.class_code)
     except ValueError as exc:
@@ -140,8 +259,13 @@ def join_class(req: StudentClassJoinRequest, db: Session = Depends(get_db)) -> S
 
 
 @app.get("/api/student/me/classes", response_model=list[StudentClassSummary])
-def student_classes(student_id: str, db: Session = Depends(get_db)) -> list[StudentClassSummary]:
+def student_classes(
+    student_id: str,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[StudentClassSummary]:
     repo = GameRepository(db)
+    _require_student_access(repo, student_id, authorization)
     try:
         return repo.student_classes(student_id=student_id)
     except ValueError as exc:
@@ -149,8 +273,13 @@ def student_classes(student_id: str, db: Session = Depends(get_db)) -> list[Stud
 
 
 @app.post("/api/student/join-assignment", response_model=GameState)
-def join_assignment(req: StudentJoinAssignmentRequest, db: Session = Depends(get_db)) -> GameState:
+def join_assignment(
+    req: StudentJoinAssignmentRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> GameState:
     repo = GameRepository(db)
+    _require_student_access(repo, req.student_id, authorization)
     session_id = str(uuid.uuid4())
     try:
         return repo.create_session_from_assignment(
@@ -165,8 +294,13 @@ def join_assignment(req: StudentJoinAssignmentRequest, db: Session = Depends(get
 
 
 @app.post("/api/student/join-assignment-sprint", response_model=StrategyPublicState)
-def join_assignment_sprint(req: StudentJoinAssignmentRequest, db: Session = Depends(get_db)) -> StrategyPublicState:
+def join_assignment_sprint(
+    req: StudentJoinAssignmentRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> StrategyPublicState:
     repo = GameRepository(db)
+    _require_student_access(repo, req.student_id, authorization)
     brief, offers = strategy_engine.build_day_offers(
         day=1,
         total_days=30,
@@ -202,8 +336,14 @@ def join_assignment_sprint(req: StudentJoinAssignmentRequest, db: Session = Depe
 
 
 @app.get("/api/student/classes/{class_code}/assignments", response_model=StudentClassAssignmentsResponse)
-def student_class_assignments(class_code: str, student_id: str, db: Session = Depends(get_db)) -> StudentClassAssignmentsResponse:
+def student_class_assignments(
+    class_code: str,
+    student_id: str,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> StudentClassAssignmentsResponse:
     repo = GameRepository(db)
+    _require_student_access(repo, student_id, authorization)
     try:
         return repo.student_class_assignments(student_id=student_id, class_code=class_code)
     except ValueError as exc:
@@ -211,8 +351,13 @@ def student_class_assignments(class_code: str, student_id: str, db: Session = De
 
 
 @app.post("/api/student/turn-in", response_model=ActionResponse)
-def student_turn_in(req: StudentTurnInRequest, db: Session = Depends(get_db)) -> ActionResponse:
+def student_turn_in(
+    req: StudentTurnInRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
     repo = GameRepository(db)
+    _require_student_access(repo, req.student_id, authorization)
     try:
         return repo.turn_in_assignment(session_id=req.session_id, student_id=req.student_id)
     except ValueError as exc:
@@ -220,12 +365,133 @@ def student_turn_in(req: StudentTurnInRequest, db: Session = Depends(get_db)) ->
 
 
 @app.post("/api/student/turn-in-sprint", response_model=ActionResponse)
-def student_turn_in_sprint(req: StudentTurnInRequest, db: Session = Depends(get_db)) -> ActionResponse:
+def student_turn_in_sprint(
+    req: StudentTurnInRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
     repo = GameRepository(db)
+    _require_student_access(repo, req.student_id, authorization)
     try:
         return repo.turn_in_strategy_assignment(session_id=req.session_id, student_id=req.student_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/student/evidence/upload")
+async def student_upload_evidence(
+    student_id: str = Form(...),
+    note: str = Form(default=""),
+    session_id: str = Form(default=""),
+    class_code: str = Form(default=""),
+    assignment_code: str = Form(default=""),
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    repo = GameRepository(db)
+    _require_student_access(repo, student_id, authorization)
+    _require_firestore_mode()
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="File is required")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_EVIDENCE_FILE_BYTES:
+        raise HTTPException(status_code=400, detail="File exceeds 15MB limit")
+
+    student_key = student_id.strip().upper()
+    evidence_id = uuid.uuid4().hex
+    safe_filename = _sanitize_filename(file.filename)
+    object_name = f"evidence/{student_key}/{evidence_id}-{safe_filename}"
+    content_type = (file.content_type or "application/octet-stream").strip()
+
+    bucket = _get_storage_bucket()
+    blob = bucket.blob(object_name)
+    blob.upload_from_string(content, content_type=content_type)
+
+    now = datetime.utcnow()
+    record = {
+        "evidence_id": evidence_id,
+        "student_id": student_key,
+        "session_id": session_id.strip(),
+        "class_code": class_code.strip().upper(),
+        "assignment_code": assignment_code.strip().upper(),
+        "note": note.strip(),
+        "filename": safe_filename,
+        "content_type": content_type,
+        "size_bytes": len(content),
+        "bucket": bucket.name,
+        "object_name": object_name,
+        "created_at": now,
+    }
+    fs = _get_firestore_client()
+    fs.collection("student_evidence").document(evidence_id).set(record)
+    return {
+        "evidence_id": evidence_id,
+        "student_id": student_key,
+        "filename": safe_filename,
+        "size_bytes": len(content),
+        "content_type": content_type,
+        "session_id": session_id.strip(),
+        "class_code": class_code.strip().upper(),
+        "assignment_code": assignment_code.strip().upper(),
+        "note": note.strip(),
+        "created_at": now.isoformat(),
+    }
+
+
+@app.get("/api/student/evidence")
+def student_list_evidence(
+    student_id: str,
+    limit: int = 50,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    repo = GameRepository(db)
+    _require_student_access(repo, student_id, authorization)
+    _require_firestore_mode()
+    safe_limit = max(1, min(limit, 200))
+    student_key = student_id.strip().upper()
+    fs = _get_firestore_client()
+    rows: list[dict] = []
+    for doc in fs.collection("student_evidence").stream():
+        data = doc.to_dict() or {}
+        if str(data.get("student_id", "")).upper() != student_key:
+            continue
+        data["download_endpoint"] = f"/api/student/evidence/{doc.id}/download?student_id={student_key}"
+        rows.append(_serialize_firestore_value(data))
+    rows.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return rows[:safe_limit]
+
+
+@app.get("/api/student/evidence/{evidence_id}/download")
+def student_download_evidence(
+    evidence_id: str,
+    student_id: str,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> Response:
+    repo = GameRepository(db)
+    _require_student_access(repo, student_id, authorization)
+    _require_firestore_mode()
+    fs = _get_firestore_client()
+    snap = fs.collection("student_evidence").document(evidence_id).get()
+    if not snap.exists:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    data = snap.to_dict() or {}
+    if str(data.get("student_id", "")).upper() != student_id.strip().upper():
+        raise HTTPException(status_code=403, detail="Evidence does not belong to this student")
+    bucket = _get_storage_bucket()
+    blob = bucket.blob(str(data.get("object_name", "")))
+    if not blob.exists():
+        raise HTTPException(status_code=404, detail="Evidence file not found in storage")
+    payload = blob.download_as_bytes()
+    filename = str(data.get("filename", "evidence.bin"))
+    content_type = str(data.get("content_type", "application/octet-stream"))
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=payload, media_type=content_type, headers=headers)
 
 
 @app.post("/api/advance-day", response_model=AdvanceDayResponse)
@@ -792,3 +1058,80 @@ def teacher_risk_alerts(
         class_code=class_code,
         assignment_code=assignment_code,
     )
+
+
+@app.get("/api/teacher/evidence")
+def teacher_list_evidence(
+    limit: int = 100,
+    class_code: str | None = None,
+    assignment_code: str | None = None,
+    student_id: str | None = None,
+    x_teacher_key: Optional[str] = Header(default=None),
+) -> list[dict]:
+    _require_teacher_key(x_teacher_key)
+    _require_firestore_mode()
+    safe_limit = max(1, min(limit, 400))
+    class_filter = (class_code or "").strip().upper()
+    assignment_filter = (assignment_code or "").strip().upper()
+    student_filter = (student_id or "").strip().upper()
+    fs = _get_firestore_client()
+    rows: list[dict] = []
+    for doc in fs.collection("student_evidence").stream():
+        data = doc.to_dict() or {}
+        if class_filter and str(data.get("class_code", "")).upper() != class_filter:
+            continue
+        if assignment_filter and str(data.get("assignment_code", "")).upper() != assignment_filter:
+            continue
+        if student_filter and str(data.get("student_id", "")).upper() != student_filter:
+            continue
+        out = _serialize_firestore_value(data)
+        out["download_endpoint"] = f"/api/teacher/evidence/{doc.id}/download"
+        rows.append(out)
+    rows.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return rows[:safe_limit]
+
+
+@app.get("/api/teacher/evidence/{evidence_id}/download")
+def teacher_download_evidence(
+    evidence_id: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+) -> Response:
+    _require_teacher_key(x_teacher_key)
+    _require_firestore_mode()
+    fs = _get_firestore_client()
+    snap = fs.collection("student_evidence").document(evidence_id).get()
+    if not snap.exists:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    data = snap.to_dict() or {}
+    bucket = _get_storage_bucket()
+    blob = bucket.blob(str(data.get("object_name", "")))
+    if not blob.exists():
+        raise HTTPException(status_code=404, detail="Evidence file not found in storage")
+    payload = blob.download_as_bytes()
+    filename = str(data.get("filename", "evidence.bin"))
+    content_type = str(data.get("content_type", "application/octet-stream"))
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=payload, media_type=content_type, headers=headers)
+
+
+@app.delete("/api/teacher/evidence/{evidence_id}", response_model=ActionResponse)
+def teacher_delete_evidence(
+    evidence_id: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    _require_firestore_mode()
+    fs = _get_firestore_client()
+    ref = fs.collection("student_evidence").document(evidence_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    data = snap.to_dict() or {}
+    bucket = _get_storage_bucket()
+    object_name = str(data.get("object_name", "")).strip()
+    if object_name:
+        blob = bucket.blob(object_name)
+        if blob.exists():
+            blob.delete()
+    ref.delete()
+    return ActionResponse(message=f"Evidence {evidence_id} deleted")

@@ -6,3 +6,7 @@ openai==2.29.0
 httpx==0.28.1
 sqlalchemy==2.0.48
 psycopg[binary]==3.3.3
+google-cloud-firestore==2.21.0
+firebase-admin==7.1.0
+google-cloud-storage==2.18.2
+python-multipart==0.0.9

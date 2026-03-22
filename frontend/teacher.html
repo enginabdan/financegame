@@ -68,6 +68,27 @@
       </section>
 
       <section class="panel">
+        <h2>Firebase Login</h2>
+        <div class="grid three">
+          <label>
+            Email
+            <input id="authEmail" type="email" placeholder="teacher@school.edu" />
+          </label>
+          <label>
+            Password
+            <input id="authPassword" type="password" placeholder="Minimum 6 chars" />
+          </label>
+          <div class="actions-row mt-sm">
+            <button id="authSignInBtn" class="btn-no-margin">Sign In</button>
+            <button id="authSignUpBtn" class="secondary btn-no-margin">Sign Up</button>
+            <button id="authForgotBtn" class="secondary btn-no-margin">Forgot Password</button>
+            <button id="authSignOutBtn" class="warn btn-no-margin">Sign Out</button>
+          </div>
+        </div>
+        <p id="authStatus" class="meta mt-sm">Not signed in.</p>
+      </section>
+
+      <section class="panel">
         <h2>Access</h2>
         <div class="grid two">
           <label>
@@ -211,6 +232,29 @@
       </section>
 
       <section class="panel">
+        <h2>Student Evidence (Firebase Storage)</h2>
+        <p class="meta">Review uploaded proof files and remove invalid submissions when required.</p>
+        <div class="grid three mt-sm">
+          <label>
+            Class Code (optional)
+            <input id="evidenceClassCode" placeholder="e.g., A1B2C3" />
+          </label>
+          <label>
+            Assignment Code (optional)
+            <input id="evidenceAssignmentCode" placeholder="e.g., X7Y8Z9Q" />
+          </label>
+          <label>
+            Student ID (optional)
+            <input id="evidenceStudentId" placeholder="e.g., STU12345" />
+          </label>
+        </div>
+        <div class="actions-row mt-sm">
+          <button id="loadEvidenceBtn" class="btn-no-margin">Load Evidence</button>
+        </div>
+        <div id="evidenceList" class="log mt-sm"></div>
+      </section>
+
+      <section class="panel">
         <h2>Sessions</h2>
         <p class="meta">Session cards include edit and delete actions for teacher corrections.</p>
         <div class="actions-row mt-sm">
@@ -337,6 +381,7 @@
     </div>
 
     <script src="./runtime-config.js"></script>
+    <script src="./auth.js"></script>
     <script src="./teacher.js"></script>
   </body>
 </html>

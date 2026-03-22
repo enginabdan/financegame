@@ -34,7 +34,7 @@ Household context includes:
 
 - Frontend: Vanilla HTML/CSS/JS
 - Backend: FastAPI (Python)
-- Database: SQLite by default (`backend/financegame.db`), Postgres optional via `DATABASE_URL`
+- Database: Firestore (recommended for persistence) or SQLite fallback (`backend/financegame.db`)
 - AI layer: OpenAI API (optional fallback-safe)
 - Deployment target: Firebase Hosting (frontend) + Google Cloud Run (backend)
 - Domain target: GoDaddy-managed domain (e.g., bosembo.net)
@@ -78,10 +78,109 @@ See `.env.example`.
 - `OPENAI_API_KEY`: optional but recommended
 - `OPENAI_MODEL`: default `gpt-5-mini`
 - `ALLOWED_ORIGINS`: frontend origins allowed to call API
-- `DATABASE_URL`: Render Postgres connection string
+- `USE_FIRESTORE`: set `1` to persist data in Firestore (recommended)
+- `FIREBASE_PROJECT_ID`: Firebase/GCP project id for Firestore client
+- `FIREBASE_STORAGE_BUCKET`: Firebase Storage bucket (example `financegame-78d26.appspot.com`)
+- `GOOGLE_APPLICATION_CREDENTIALS`: local service-account JSON path (optional on Cloud Run)
+- `USE_FIREBASE_AUTH`: set `1` to require Firebase login token on student endpoints
 - `TEACHER_API_KEY`: required for teacher endpoints
+- `DATABASE_URL`: optional if using SQL mode instead of Firestore
 
 If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback events.
+
+## Firebase Setup (Recommended)
+
+1. Firebase Console:
+- Enable **Firestore Database** (Native mode).
+- Enable **Authentication -> Email/Password**.
+
+2. Frontend runtime config:
+- Edit `frontend/runtime-config.js` and set:
+  - `FIREBASE_WEB_API_KEY` = your Firebase Web API key.
+  - `API_BASE` = your backend URL (for production `https://api.bosembo.net`).
+
+3. Cloud Run environment variables:
+- `USE_FIRESTORE=1`
+- `FIREBASE_PROJECT_ID=your-project-id`
+- `USE_FIREBASE_AUTH=1`
+- `OPENAI_API_KEY=...`
+- `TEACHER_API_KEY=...`
+- `ALLOWED_ORIGINS=https://play.bosembo.net,https://financegame-78d26.web.app`
+
+4. IAM for Cloud Run service account:
+- Grant `Cloud Datastore User` (or equivalent Firestore read/write role) so backend can read/write Firestore.
+- Grant `Storage Object Admin` (or equivalent bucket read/write role) for evidence file upload/download/delete.
+
+5. Deploy:
+- Backend: Cloud Run new revision
+- Frontend: `firebase deploy --only hosting`
+
+## Firebase Storage (Student Evidence)
+
+Student upload flow:
+- Student uploads screenshot/receipt from `/` -> **Upload Evidence**.
+- File is saved in Firebase Storage under `evidence/{student_id}/...`.
+- Metadata is stored in Firestore collection `student_evidence`.
+
+Teacher review flow:
+- Teacher opens `/teacher.html` -> **Student Evidence (Firebase Storage)**.
+- Filter by class / assignment / student, then download or delete submissions.
+
+## One-Time Migration: SQLite -> Firestore
+
+If you already have local SQLite data and want to keep it in Firebase:
+
+```bash
+cd /Users/engin/D/mygithub/financegame
+source backend/.venv314/bin/activate
+python backend/scripts/migrate_sqlite_to_firestore.py \
+  --sqlite-path backend/financegame.db \
+  --project-id financegame-78d26
+```
+
+Optional reset import:
+
+```bash
+python backend/scripts/migrate_sqlite_to_firestore.py \
+  --sqlite-path backend/financegame.db \
+  --project-id financegame-78d26 \
+  --clear-first
+```
+
+## Firestore Operations (Backup / Restore / Health)
+
+Export backup JSON:
+
+```bash
+cd /Users/engin/D/mygithub/financegame
+source backend/.venv314/bin/activate
+python backend/scripts/firestore_backup_json.py \
+  --project-id financegame-78d26
+```
+
+Restore from backup JSON:
+
+```bash
+python backend/scripts/firestore_restore_json.py \
+  --project-id financegame-78d26 \
+  --input backend/backups/firestore-backup-YYYYMMDD-HHMMSS.json
+```
+
+Restore and replace existing data:
+
+```bash
+python backend/scripts/firestore_restore_json.py \
+  --project-id financegame-78d26 \
+  --input backend/backups/firestore-backup-YYYYMMDD-HHMMSS.json \
+  --clear-first
+```
+
+Quick health check:
+
+```bash
+python backend/scripts/firestore_health_check.py \
+  --project-id financegame-78d26
+```
 
 ## API Surface
 

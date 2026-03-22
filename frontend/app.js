@@ -33,6 +33,18 @@ const classCodeInput = document.getElementById("classCode");
 const classNameReadOnlyInput = document.getElementById("classNameReadOnly");
 const classAssignmentSelect = document.getElementById("classAssignmentSelect");
 const assignmentJoinHint = document.getElementById("assignmentJoinHint");
+const authEmailInput = document.getElementById("authEmail");
+const authPasswordInput = document.getElementById("authPassword");
+const authSignInBtn = document.getElementById("authSignInBtn");
+const authSignUpBtn = document.getElementById("authSignUpBtn");
+const authForgotBtn = document.getElementById("authForgotBtn");
+const authSignOutBtn = document.getElementById("authSignOutBtn");
+const authStatusEl = document.getElementById("authStatus");
+const evidenceFileInput = document.getElementById("evidenceFileInput");
+const evidenceNoteInput = document.getElementById("evidenceNoteInput");
+const uploadEvidenceBtn = document.getElementById("uploadEvidenceBtn");
+const loadMyEvidenceBtn = document.getElementById("loadMyEvidenceBtn");
+const myEvidenceList = document.getElementById("myEvidenceList");
 const confirmModalEl = document.getElementById("confirmModal");
 const confirmModalTitleEl = document.getElementById("confirmModalTitle");
 const confirmModalMessageEl = document.getElementById("confirmModalMessage");
@@ -301,13 +313,155 @@ function resetRunView() {
   renderWeeklyReport();
 }
 
+function updateAuthStatus() {
+  if (!authStatusEl) {
+    return;
+  }
+  const email = window.FinanceAuth?.getEmail?.() || "";
+  authStatusEl.textContent = email ? `Signed in: ${email}` : "Not signed in.";
+}
+
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
+  if (window.FinanceAuth?.refreshIdToken) {
+    try {
+      await window.FinanceAuth.refreshIdToken();
+    } catch (_err) {
+      // auth refresh is optional; backend may still allow request
+    }
+  }
+  const token = window.FinanceAuth?.getIdToken?.() || "";
+  const headers = {
+    ...(options.headers || {}),
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || "Request failed");
   }
   return await response.json();
+}
+
+async function getAuthToken() {
+  if (window.FinanceAuth?.refreshIdToken) {
+    try {
+      await window.FinanceAuth.refreshIdToken();
+    } catch (_err) {
+      // no-op
+    }
+  }
+  return window.FinanceAuth?.getIdToken?.() || "";
+}
+
+function renderMyEvidence(items) {
+  if (!myEvidenceList) {
+    return;
+  }
+  myEvidenceList.innerHTML = "";
+  if (!items.length) {
+    myEvidenceList.innerHTML = '<article class="log-item">No evidence uploaded yet.</article>';
+    return;
+  }
+  for (const item of items) {
+    const article = document.createElement("article");
+    article.className = "log-item";
+    const dateText = item.created_at ? new Date(item.created_at).toLocaleString() : "-";
+    article.innerHTML = `
+      <strong>${item.filename || "file"}</strong>
+      <p class="meta">Uploaded: ${dateText} | Size: ${Math.round((Number(item.size_bytes || 0) / 1024) * 10) / 10} KB</p>
+      <p class="meta">Class: ${item.class_code || "-"} | Assignment: ${item.assignment_code || "-"}</p>
+      <p>${item.note || ""}</p>
+      <button class="secondary btn-no-margin" data-action="download-evidence" data-evidence-id="${item.evidence_id}">Download</button>
+    `;
+    myEvidenceList.appendChild(article);
+  }
+}
+
+async function loadMyEvidence() {
+  if (!ensureStudentProfile()) {
+    return;
+  }
+  const items = await fetchJson(
+    `${API_BASE}/api/student/evidence?student_id=${encodeURIComponent(studentId)}&limit=100`,
+  );
+  renderMyEvidence(Array.isArray(items) ? items : []);
+}
+
+async function uploadEvidence() {
+  if (!ensureStudentProfile()) {
+    return;
+  }
+  const file = evidenceFileInput?.files?.[0];
+  if (!file) {
+    appAlert("Select a file first.");
+    return;
+  }
+
+  const token = await getAuthToken();
+  const headers = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const formData = new FormData();
+  formData.append("student_id", studentId);
+  formData.append("session_id", sessionId || "");
+  formData.append("class_code", (classCodeInput?.value || loadedClassCode || "").trim().toUpperCase());
+  formData.append("assignment_code", (classAssignmentSelect?.value || "").trim().toUpperCase());
+  formData.append("note", (evidenceNoteInput?.value || "").trim());
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/api/student/evidence/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.detail || "Evidence upload failed");
+  }
+
+  if (evidenceFileInput) {
+    evidenceFileInput.value = "";
+  }
+  if (evidenceNoteInput) {
+    evidenceNoteInput.value = "";
+  }
+  appAlert("Evidence uploaded.", "Success", "success");
+  await loadMyEvidence();
+}
+
+async function downloadMyEvidence(evidenceId) {
+  if (!ensureStudentProfile()) {
+    return;
+  }
+  const token = await getAuthToken();
+  const headers = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const url = `${API_BASE}/api/student/evidence/${encodeURIComponent(evidenceId)}/download?student_id=${encodeURIComponent(studentId)}`;
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Download failed");
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename=\"?([^"]+)\"?/i);
+  const filename = filenameMatch?.[1] || "evidence.bin";
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
 }
 
 async function registerStudent() {
@@ -354,7 +508,7 @@ async function registerStudent() {
     }
   }
   syncStudentProfileUI();
-  appAlert(`Student profile ready. Student ID: ${studentId}`, "Success", "success");
+  appAlert("Student profile ready.", "Success", "success");
 }
 
 function renderMyClasses(classes) {
@@ -606,6 +760,24 @@ loadClassAssignmentsBtn.addEventListener("click", () => {
   });
 });
 
+if (uploadEvidenceBtn) {
+  uploadEvidenceBtn.addEventListener("click", () => {
+    uploadEvidence().catch((err) => {
+      console.error(err);
+      appAlert(err.message || "Unexpected error while uploading evidence");
+    });
+  });
+}
+
+if (loadMyEvidenceBtn) {
+  loadMyEvidenceBtn.addEventListener("click", () => {
+    loadMyEvidence().catch((err) => {
+      console.error(err);
+      appAlert(err.message || "Unexpected error while loading evidence");
+    });
+  });
+}
+
 joinClassAssignmentBtn.addEventListener("click", () => {
   joinClassAssignment().catch((err) => {
     console.error(err);
@@ -629,6 +801,55 @@ if (turnInBtn) {
   });
 }
 
+if (authSignInBtn) {
+  authSignInBtn.addEventListener("click", () => {
+    const email = (authEmailInput?.value || "").trim();
+    const password = (authPasswordInput?.value || "").trim();
+    window.FinanceAuth?.signIn?.(email, password)
+      .then(() => {
+        updateAuthStatus();
+        appAlert("Signed in.", "Success", "success");
+      })
+      .catch((err) => appAlert(err.message || "Sign in failed"));
+  });
+}
+
+if (authSignUpBtn) {
+  authSignUpBtn.addEventListener("click", () => {
+    const email = (authEmailInput?.value || "").trim();
+    const password = (authPasswordInput?.value || "").trim();
+    window.FinanceAuth?.signUp?.(email, password)
+      .then(() => {
+        updateAuthStatus();
+        appAlert("Account created and signed in.", "Success", "success");
+      })
+      .catch((err) => appAlert(err.message || "Sign up failed"));
+  });
+}
+
+if (authForgotBtn) {
+  authForgotBtn.addEventListener("click", () => {
+    const email = (authEmailInput?.value || "").trim();
+    window.FinanceAuth?.sendPasswordReset?.(email)
+      .then(() => {
+        appAlert("Password reset email sent. Check your inbox.", "Success", "success");
+      })
+      .catch((err) => appAlert(err.message || "Could not send password reset email"));
+  });
+}
+
+if (authSignOutBtn) {
+  authSignOutBtn.addEventListener("click", () => {
+    window.FinanceAuth?.signOut?.();
+    updateAuthStatus();
+    appAlert("Signed out.", "Success", "success");
+  });
+}
+
+if (window.FinanceAuth?.onChange) {
+  window.FinanceAuth.onChange(() => updateAuthStatus());
+}
+
 if (myClassesEl) {
   myClassesEl.addEventListener("click", (event) => {
     const target = event.target;
@@ -645,9 +866,30 @@ if (myClassesEl) {
   });
 }
 
+if (myEvidenceList) {
+  myEvidenceList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+    if (target.getAttribute("data-action") !== "download-evidence") {
+      return;
+    }
+    const evidenceId = target.getAttribute("data-evidence-id") || "";
+    if (!evidenceId) {
+      return;
+    }
+    downloadMyEvidence(evidenceId).catch((err) => {
+      console.error(err);
+      appAlert(err.message || "Unexpected error while downloading evidence");
+    });
+  });
+}
+
 classCodeInput.addEventListener("input", () => {
   classCodeInput.value = (classCodeInput.value || "").toUpperCase().trimStart();
 });
 
 syncStudentProfileUI();
 resetRunView();
+updateAuthStatus();

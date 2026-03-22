@@ -3,3 +3,6 @@ backend/financegame.db
 .firebase/
 __pycache__/
 *.pyc
+firebase-debug.log
+.DS_Store
+backend/backups/
