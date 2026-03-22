@@ -6,3 +6,5 @@ __pycache__/
 firebase-debug.log
 .DS_Store
 backend/backups/
+backend/.venv/
+backend/.venv314/

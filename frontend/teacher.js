@@ -45,6 +45,7 @@ const authSignUpBtn = document.getElementById("authSignUpBtn");
 const authForgotBtn = document.getElementById("authForgotBtn");
 const authSignOutBtn = document.getElementById("authSignOutBtn");
 const authStatusEl = document.getElementById("authStatus");
+const requiresAuthSections = Array.from(document.querySelectorAll(".requires-auth"));
 
 const classNameInput = document.getElementById("classNameInput");
 const assignClassCodeInput = document.getElementById("assignClassCodeInput");
@@ -716,6 +717,10 @@ function updateAuthStatus() {
   }
   const email = window.FinanceAuth?.getEmail?.() || "";
   authStatusEl.textContent = email ? `Signed in: ${email}` : "Not signed in.";
+  const isSignedIn = Boolean(email);
+  for (const section of requiresAuthSections) {
+    section.classList.toggle("is-visible", isSignedIn);
+  }
 }
 
 function persistAccess(apiBase, teacherKey) {

@@ -88,6 +88,14 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
+.requires-auth {
+  display: none;
+}
+
+.requires-auth.is-visible {
+  display: block;
+}
+
 h2 {
   margin: 0 0 12px;
   color: #15364d;

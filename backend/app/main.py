@@ -11,15 +11,23 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-import firebase_admin
-from firebase_admin import auth as firebase_auth, credentials
-from google.cloud import firestore, storage
+try:
+    import firebase_admin
+    from firebase_admin import auth as firebase_auth, credentials
+except Exception:  # pragma: no cover - optional dependency fallback
+    firebase_admin = None
+    firebase_auth = None
+    credentials = None
+try:
+    from google.cloud import firestore, storage
+except Exception:  # pragma: no cover - optional dependency fallback
+    firestore = None
+    storage = None
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal, init_db
 from .engine import FinanceGameEngine, StrategyAssignmentEngine
 from .repository import GameRepository
-from .firestore_repository import FirestoreGameRepository
 from .schemas import (
     ActionResponse,
     AdvanceDayRequest,
@@ -68,7 +76,12 @@ USE_FIRESTORE = os.getenv("USE_FIRESTORE", "").strip().lower() in {"1", "true", 
     os.getenv("FIREBASE_PROJECT_ID", "").strip()
 )
 if USE_FIRESTORE:
-    GameRepository = FirestoreGameRepository  # type: ignore[misc,assignment]
+    try:
+        from .firestore_repository import FirestoreGameRepository
+
+        GameRepository = FirestoreGameRepository  # type: ignore[misc,assignment]
+    except Exception:
+        USE_FIRESTORE = False
 
 app = FastAPI(title="Hustle & Home API", version="0.3.0")
 engine = FinanceGameEngine()
@@ -82,15 +95,18 @@ FIREBASE_STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "").strip()
 MAX_EVIDENCE_FILE_BYTES = 15 * 1024 * 1024
 
 if USE_FIREBASE_AUTH:
-    try:
-        if not firebase_admin._apps:
-            cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-            if cred_path:
-                firebase_admin.initialize_app(credentials.Certificate(cred_path))
-            else:
-                firebase_admin.initialize_app()
-    except Exception:
+    if firebase_admin is None:
         USE_FIREBASE_AUTH = False
+    else:
+        try:
+            if not firebase_admin._apps:
+                cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+                if cred_path:
+                    firebase_admin.initialize_app(credentials.Certificate(cred_path))
+                else:
+                    firebase_admin.initialize_app()
+        except Exception:
+            USE_FIREBASE_AUTH = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -125,6 +141,8 @@ def _require_teacher_key(x_teacher_key: Optional[str]) -> None:
 def _verify_firebase_token(authorization: Optional[str]) -> dict:
     if not USE_FIREBASE_AUTH:
         raise HTTPException(status_code=503, detail="Firebase Auth is not enabled")
+    if firebase_auth is None:
+        raise HTTPException(status_code=503, detail="firebase_admin is not installed")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing Firebase bearer token")
     token = authorization.split(" ", 1)[1].strip()
@@ -169,6 +187,8 @@ def _parse_iso_datetime(value: str | None, field_name: str) -> datetime | None:
 def _require_firestore_mode() -> None:
     if not USE_FIRESTORE:
         raise HTTPException(status_code=400, detail="This feature requires USE_FIRESTORE=1")
+    if firestore is None or storage is None:
+        raise HTTPException(status_code=503, detail="google-cloud-firestore/storage is not installed")
 
 
 def _get_firestore_client() -> firestore.Client:

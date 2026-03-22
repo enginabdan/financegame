@@ -14,12 +14,12 @@
   </head>
   <body>
     <main class="container">
-      <section class="hero">
+      <section class="hero requires-auth">
         <h1>Teacher Dashboard</h1>
         <p>Monitor student runs, outcomes, and day-by-day decisions.</p>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <details class="collapsible">
           <summary>How This Page Works</summary>
           <div class="log mt-sm">
@@ -47,7 +47,7 @@
         </details>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <details class="collapsible">
           <summary>Quick Start (3 Steps)</summary>
           <div class="log mt-sm">
@@ -67,7 +67,7 @@
         </details>
       </section>
 
-      <section class="panel">
+      <section class="panel auth-only">
         <h2>Firebase Login</h2>
         <div class="grid two">
           <label>
@@ -88,7 +88,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Access</h2>
         <div class="grid two">
           <label>
@@ -107,7 +107,7 @@
         <button id="loadBtn">Load Dashboard</button>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Class Setup</h2>
         <p class="meta">You can edit or delete classes directly from each class card below.</p>
         <div class="grid">
@@ -122,7 +122,7 @@
         <div id="classList" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Assignment Setup</h2>
         <p class="meta">Assignments support full edit, activate/deactivate, and delete.</p>
         <div class="grid two">
@@ -157,7 +157,7 @@
         <div id="assignmentList" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Class Students</h2>
         <p class="meta">Load class roster, set students active/inactive, or remove students who permanently left.</p>
         <div class="grid">
@@ -172,7 +172,7 @@
         <div id="classStudentsList" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Overview</h2>
         <div class="grid two">
           <button id="exportSessionsCsvBtn" class="btn-no-margin">Export Sessions CSV</button>
@@ -181,7 +181,7 @@
         <div id="overview" class="stats"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Filters</h2>
         <div class="grid four">
           <label>
@@ -212,7 +212,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Risk Alerts</h2>
         <p class="meta">Students with medium/high/critical financial risk are listed here.</p>
         <div class="grid two mt-sm">
@@ -231,7 +231,7 @@
         <div id="riskAlertsList" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Student Evidence (Firebase Storage)</h2>
         <p class="meta">Review uploaded proof files and remove invalid submissions when required.</p>
         <div class="grid three mt-sm">
@@ -254,7 +254,7 @@
         <div id="evidenceList" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Sessions</h2>
         <p class="meta">Session cards include edit and delete actions for teacher corrections.</p>
         <div class="actions-row mt-sm">
@@ -263,12 +263,12 @@
         <div id="sessions" class="log"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Selected Session Logs</h2>
         <div id="logs" class="log"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Assignment Rubric</h2>
         <div class="grid">
           <label>
@@ -282,7 +282,7 @@
         <div id="rubricList" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Live Sprint Leaderboard</h2>
         <div class="actions-row">
           <button id="loadStrategyLeaderboardBtn" class="btn-no-margin">Refresh Leaderboard</button>
@@ -292,13 +292,13 @@
         <div id="strategyLeaderboard" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Selected Sprint Session</h2>
         <p class="meta">Inspect all offers, selections, profits, and optimal benchmark details.</p>
         <div id="strategySessionReview" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Trash (Soft Delete)</h2>
         <p class="meta">Restore recently deleted classes, assignments, sessions, or sprint sessions.</p>
         <div class="grid three mt-sm">
@@ -340,7 +340,7 @@
         <div id="trashList" class="log mt-sm"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Audit Log</h2>
         <p class="meta">Tracks create/update/delete/restore and other teacher-side data actions.</p>
         <div class="grid four mt-sm">

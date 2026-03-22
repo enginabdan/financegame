@@ -14,7 +14,7 @@
   </head>
   <body>
     <main class="container">
-      <section class="hero">
+      <section class="hero requires-auth">
         <h1>Hustle & Home: Charlotte 30</h1>
         <p>
           Manage 30 days of gig work, online selling, and family expenses. Make smart decisions under
@@ -22,7 +22,7 @@
         </p>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <details class="collapsible">
           <summary>How This Page Works</summary>
           <div class="log mt-sm">
@@ -46,7 +46,7 @@
         </details>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <details class="collapsible">
           <summary>Quick Start (3 Steps)</summary>
           <div class="log mt-sm">
@@ -66,7 +66,7 @@
         </details>
       </section>
 
-      <section class="panel">
+      <section class="panel auth-only">
         <h2>Firebase Login</h2>
         <div class="grid two">
           <label>
@@ -87,7 +87,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Student Profile (Required for Classwork)</h2>
         <div class="grid two">
           <label>
@@ -111,7 +111,7 @@
         <p class="meta">Use first name, last name, and school email. Student ID is generated and managed in the background.</p>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Start Game</h2>
         <div class="grid two">
           <label>
@@ -127,7 +127,7 @@
         <button id="startBtn">Start Free Play Game</button>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Join Class Assignment</h2>
         <div class="grid two">
           <label>
@@ -163,7 +163,7 @@
         <button id="joinClassAssignmentBtn">Join Class and Start Assignment</button>
       </section>
 
-      <section class="panel" id="statePanel">
+      <section class="panel requires-auth" id="statePanel">
         <h2>Game State</h2>
         <div class="stats" id="stats"></div>
         <div class="actions-row mt-sm">
@@ -171,7 +171,7 @@
         </div>
       </section>
 
-      <section class="panel" id="decisionPanel">
+      <section class="panel requires-auth" id="decisionPanel">
         <h2>Daily Allocation</h2>
         <div class="grid three">
           <label>
@@ -212,17 +212,17 @@
         <button id="advanceBtn">Advance Day</button>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Daily Log</h2>
         <div id="log" class="log"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Weekly Report</h2>
         <div id="weeklyReport" class="log"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Upload Evidence (Optional)</h2>
         <p class="meta">Upload screenshots, receipts, or work proof for class review.</p>
         <div class="grid two mt-sm">
@@ -242,7 +242,7 @@
         <div id="myEvidenceList" class="log mt-sm"></div>
       </section>
 
-      <section class="hero">
+      <section class="hero requires-auth">
         <h1>1-Hour Profit Sprint (30-Day Simulation)</h1>
         <p>
           Pick one live opportunity each simulated day. The system tracks your hidden optimal benchmark and scores
@@ -250,7 +250,7 @@
         </p>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Start Sprint Assignment</h2>
         <div class="grid two">
           <label>
@@ -269,23 +269,23 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Sprint Progress</h2>
         <div id="sprintProgressStats" class="stats"></div>
         <p id="sprintDayBrief" class="meta"></p>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Sprint Opportunities</h2>
         <div id="sprintOffers" class="log"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Sprint Decision Log</h2>
         <div id="sprintDecisionLog" class="log"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel requires-auth">
         <h2>Sprint Final Evaluation</h2>
         <div id="sprintFinalResult" class="log"></div>
       </section>

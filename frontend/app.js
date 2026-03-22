@@ -40,6 +40,7 @@ const authSignUpBtn = document.getElementById("authSignUpBtn");
 const authForgotBtn = document.getElementById("authForgotBtn");
 const authSignOutBtn = document.getElementById("authSignOutBtn");
 const authStatusEl = document.getElementById("authStatus");
+const requiresAuthSections = Array.from(document.querySelectorAll(".requires-auth"));
 const evidenceFileInput = document.getElementById("evidenceFileInput");
 const evidenceNoteInput = document.getElementById("evidenceNoteInput");
 const uploadEvidenceBtn = document.getElementById("uploadEvidenceBtn");
@@ -319,6 +320,10 @@ function updateAuthStatus() {
   }
   const email = window.FinanceAuth?.getEmail?.() || "";
   authStatusEl.textContent = email ? `Signed in: ${email}` : "Not signed in.";
+  const isSignedIn = Boolean(email);
+  for (const section of requiresAuthSections) {
+    section.classList.toggle("is-visible", isSignedIn);
+  }
 }
 
 async function fetchJson(url, options = {}) {
