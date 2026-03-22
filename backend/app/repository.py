@@ -26,6 +26,7 @@ from .schemas import (
     TeacherOverviewResponse,
     TeacherSessionSummary,
     StrategyChooseResponse,
+    StrategyLeaderboardRow,
     StrategyOffer,
     StrategyPublicState,
     StrategyResultResponse,
@@ -586,6 +587,39 @@ class GameRepository:
             success_percentage=round(pct, 2),
             status=row.status,
         )
+
+    def strategy_leaderboard(self, limit: int = 50) -> list[StrategyLeaderboardRow]:
+        rows = (
+            self.db.query(StrategySessionModel)
+            .order_by(StrategySessionModel.updated_at.desc())
+            .limit(limit)
+            .all()
+        )
+        data: list[StrategyLeaderboardRow] = []
+        for row in rows:
+            denom = row.optimal_profit if row.optimal_profit > 0 else 1.0
+            pct = max(0.0, min(100.0, (row.total_profit / denom) * 100))
+            data.append(
+                StrategyLeaderboardRow(
+                    session_id=row.session_id,
+                    player_name=row.player_name,
+                    current_day=row.current_day,
+                    total_days=row.total_days,
+                    total_profit=round(row.total_profit, 2),
+                    optimal_profit=round(row.optimal_profit, 2),
+                    success_percentage=round(pct, 2),
+                    status=row.status,
+                    updated_at=row.updated_at,
+                )
+            )
+        data.sort(
+            key=lambda x: (
+                x.status != "completed",
+                -x.success_percentage,
+                -x.total_profit,
+            )
+        )
+        return data[:limit]
 
     def _decode_offers(self, offers_json: str) -> list[dict]:
         try:

@@ -4,6 +4,7 @@ const createAssignmentBtn = document.getElementById("createAssignmentBtn");
 const loadRubricBtn = document.getElementById("loadRubricBtn");
 const exportSessionsCsvBtn = document.getElementById("exportSessionsCsvBtn");
 const exportLogsCsvBtn = document.getElementById("exportLogsCsvBtn");
+const loadStrategyLeaderboardBtn = document.getElementById("loadStrategyLeaderboardBtn");
 
 const overviewEl = document.getElementById("overview");
 const sessionsEl = document.getElementById("sessions");
@@ -11,6 +12,7 @@ const logsEl = document.getElementById("logs");
 const classListEl = document.getElementById("classList");
 const assignmentListEl = document.getElementById("assignmentList");
 const rubricListEl = document.getElementById("rubricList");
+const strategyLeaderboardEl = document.getElementById("strategyLeaderboard");
 
 const apiBaseInput = document.getElementById("apiBase");
 const teacherKeyInput = document.getElementById("teacherKey");
@@ -161,6 +163,29 @@ function renderRubric(rows) {
   }
 }
 
+function renderStrategyLeaderboard(rows) {
+  if (!strategyLeaderboardEl) {
+    return;
+  }
+  strategyLeaderboardEl.innerHTML = "";
+  if (!rows.length) {
+    strategyLeaderboardEl.innerHTML = '<article class="log-item">No sprint sessions yet.</article>';
+    return;
+  }
+
+  for (const row of rows) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    card.innerHTML = `
+      <strong>${row.player_name} (${row.status})</strong>
+      <p class="meta">Progress: Day ${row.current_day}/${row.total_days} | Success: ${row.success_percentage}%</p>
+      <p class="meta">Profit: ${money(row.total_profit)} | Optimal: ${money(row.optimal_profit)}</p>
+      <p class="meta">Session: ${row.session_id}</p>
+    `;
+    strategyLeaderboardEl.appendChild(card);
+  }
+}
+
 async function fetchJson(url, teacherKey, options = {}) {
   const res = await fetch(url, {
     ...options,
@@ -229,6 +254,7 @@ async function loadDashboard() {
     renderOverview(overview);
     renderSessions(sessions, apiBase, teacherKey);
     await loadClassAndAssignments(apiBase, teacherKey);
+    await loadStrategyLeaderboard();
     logsEl.innerHTML = "";
   } catch (err) {
     alert(err.message || "Failed to load dashboard");
@@ -263,6 +289,21 @@ async function loadAssignmentRubric() {
     renderRubric(rows);
   } catch (err) {
     alert(err.message || "Failed to load rubric");
+  }
+}
+
+async function loadStrategyLeaderboard() {
+  const apiBase = apiBaseInput.value.trim();
+  const teacherKey = teacherKeyInput.value;
+  if (!teacherKey) {
+    return;
+  }
+
+  try {
+    const rows = await fetchJson(`${apiBase}/api/teacher/strategy/leaderboard?limit=100`, teacherKey);
+    renderStrategyLeaderboard(rows);
+  } catch (err) {
+    console.error(err);
   }
 }
 
@@ -463,6 +504,15 @@ loadRubricBtn.addEventListener("click", () => {
   });
 });
 
+if (loadStrategyLeaderboardBtn) {
+  loadStrategyLeaderboardBtn.addEventListener("click", () => {
+    loadStrategyLeaderboard().catch((err) => {
+      console.error(err);
+      alert("Unexpected error while loading strategy leaderboard");
+    });
+  });
+}
+
 exportSessionsCsvBtn.addEventListener("click", exportSessionsCsv);
 exportLogsCsvBtn.addEventListener("click", exportLogsCsv);
 
@@ -496,3 +546,9 @@ assignmentListEl.addEventListener("click", (event) => {
 });
 
 restoreAccessFields();
+
+setInterval(() => {
+  if (teacherKeyInput.value.trim()) {
+    loadStrategyLeaderboard().catch(() => {});
+  }
+}, 20000);

@@ -198,3 +198,15 @@ class StrategyResultResponse(BaseModel):
     optimal_profit: float
     success_percentage: float
     status: Literal["active", "completed"]
+
+
+class StrategyLeaderboardRow(BaseModel):
+    session_id: str
+    player_name: str
+    current_day: int
+    total_days: int
+    total_profit: float
+    optimal_profit: float
+    success_percentage: float
+    status: Literal["active", "completed"]
+    updated_at: datetime

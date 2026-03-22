@@ -27,6 +27,7 @@ from .schemas import (
     StudentJoinAssignmentRequest,
     StrategyChooseRequest,
     StrategyChooseResponse,
+    StrategyLeaderboardRow,
     StrategyResultResponse,
     StrategyStartRequest,
     StrategyPublicState,
@@ -326,3 +327,15 @@ def strategy_choose(req: StrategyChooseRequest, db: Session = Depends(get_db)) -
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/teacher/strategy/leaderboard", response_model=list[StrategyLeaderboardRow])
+def teacher_strategy_leaderboard(
+    limit: int = 50,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[StrategyLeaderboardRow]:
+    _require_teacher_key(x_teacher_key)
+    safe_limit = max(1, min(limit, 200))
+    repo = GameRepository(db)
+    return repo.strategy_leaderboard(limit=safe_limit)
