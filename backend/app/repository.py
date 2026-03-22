@@ -226,21 +226,69 @@ class GameRepository:
         ]
 
     def register_student(self, display_name: str) -> StudentProfileSummary:
+        clean = display_name.strip() or "Student User"
+        first, _, last = clean.partition(" ")
+        last_name = last.strip() or "User"
+        return self.register_student_with_identity(
+            first_name=first.strip(),
+            last_name=last_name,
+            school_email=f"{clean.lower().replace(' ','.')}@student.local",
+        )
+
+    def register_student_with_identity(self, *, first_name: str, last_name: str, school_email: str) -> StudentProfileSummary:
+        email = school_email.strip().lower()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise ValueError("Invalid school email format")
+
+        existing = self.db.query(StudentProfileModel).filter(StudentProfileModel.school_email == email).first()
+        if existing:
+            existing.first_name = first_name.strip()
+            existing.last_name = last_name.strip()
+            existing.display_name = f"{existing.first_name} {existing.last_name}".strip()
+            existing.is_active = True
+            self._audit(
+                action="student_profile_login",
+                target_type="student",
+                target_key=existing.student_id,
+                detail={"school_email": existing.school_email},
+                actor="student",
+            )
+            self.db.commit()
+            self.db.refresh(existing)
+            return StudentProfileSummary(
+                student_id=existing.student_id,
+                first_name=existing.first_name,
+                last_name=existing.last_name,
+                school_email=existing.school_email,
+                is_active=bool(existing.is_active),
+                created_at=existing.created_at,
+            )
+
         student_id = self._unique_student_id()
-        row = StudentProfileModel(student_id=student_id, display_name=display_name.strip())
+        row = StudentProfileModel(
+            student_id=student_id,
+            display_name=f"{first_name.strip()} {last_name.strip()}".strip(),
+            first_name=first_name.strip(),
+            last_name=last_name.strip(),
+            school_email=email,
+            is_active=True,
+        )
         self.db.add(row)
         self._audit(
             action="register_student",
             target_type="student",
             target_key=student_id,
-            detail={"display_name": row.display_name},
+            detail={"school_email": row.school_email},
             actor="student",
         )
         self.db.commit()
         self.db.refresh(row)
         return StudentProfileSummary(
             student_id=row.student_id,
-            display_name=row.display_name,
+            first_name=row.first_name,
+            last_name=row.last_name,
+            school_email=row.school_email,
+            is_active=bool(row.is_active),
             created_at=row.created_at,
         )
 
@@ -251,6 +299,8 @@ class GameRepository:
         student = self.get_student(student_id)
         if student is None:
             raise ValueError("Student profile not found")
+        if not student.is_active:
+            raise ValueError("Student profile is inactive")
 
         classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
         if classroom is None:
@@ -265,21 +315,25 @@ class GameRepository:
             .first()
         )
         if existing is None:
-            existing = StudentClassMembershipModel(student_id_fk=student.id, classroom_id=classroom.id)
+            existing = StudentClassMembershipModel(student_id_fk=student.id, classroom_id=classroom.id, status="active")
             self.db.add(existing)
-            self._audit(
-                action="join_class",
-                target_type="classroom",
-                target_key=classroom.class_code,
-                detail={"student_id": student.student_id},
-                actor="student",
-            )
-            self.db.commit()
-            self.db.refresh(existing)
+        else:
+            existing.status = "active"
+
+        self._audit(
+            action="join_class",
+            target_type="classroom",
+            target_key=classroom.class_code,
+            detail={"student_id": student.student_id},
+            actor="student",
+        )
+        self.db.commit()
+        self.db.refresh(existing)
 
         return StudentClassSummary(
             class_code=classroom.class_code,
             class_name=classroom.class_name,
+            status=existing.status,
             joined_at=existing.created_at,
         )
 
@@ -299,6 +353,7 @@ class GameRepository:
             StudentClassSummary(
                 class_code=classroom.class_code,
                 class_name=classroom.class_name,
+                status=membership.status,
                 joined_at=membership.created_at,
             )
             for membership, classroom in rows
@@ -308,6 +363,8 @@ class GameRepository:
         student = self.get_student(student_id)
         if student is None:
             return False
+        if not student.is_active:
+            return False
         classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
         if classroom is None:
             return False
@@ -316,6 +373,7 @@ class GameRepository:
             .filter(
                 StudentClassMembershipModel.student_id_fk == student.id,
                 StudentClassMembershipModel.classroom_id == classroom.id,
+                StudentClassMembershipModel.status == "active",
             )
             .first()
         )
@@ -336,13 +394,16 @@ class GameRepository:
         return [
             TeacherClassStudentRow(
                 student_id=student.student_id,
-                display_name=student.display_name,
+                first_name=student.first_name,
+                last_name=student.last_name,
+                school_email=student.school_email,
+                status=membership.status,
                 joined_at=membership.created_at,
             )
             for membership, student in rows
         ]
 
-    def remove_student_from_class(self, class_code: str, student_id: str) -> ActionResponse:
+    def set_student_class_membership_status(self, class_code: str, student_id: str, status: str) -> ActionResponse:
         classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
         if classroom is None:
             raise ValueError("Class not found")
@@ -361,6 +422,33 @@ class GameRepository:
         if membership is None:
             raise ValueError("Student is not a member of this class")
 
+        membership.status = status
+        self._audit(
+            action="set_student_membership_status",
+            target_type="classroom",
+            target_key=classroom.class_code,
+            detail={"student_id": student.student_id, "status": status},
+        )
+        self.db.commit()
+        return ActionResponse(message=f"Student {student.student_id} marked {status} in class {classroom.class_code}")
+
+    def remove_student_from_class(self, class_code: str, student_id: str) -> ActionResponse:
+        classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if classroom is None:
+            raise ValueError("Class not found")
+        student = self.get_student(student_id)
+        if student is None:
+            raise ValueError("Student not found")
+        membership = (
+            self.db.query(StudentClassMembershipModel)
+            .filter(
+                StudentClassMembershipModel.classroom_id == classroom.id,
+                StudentClassMembershipModel.student_id_fk == student.id,
+            )
+            .first()
+        )
+        if membership is None:
+            raise ValueError("Student is not a member of this class")
         self.db.delete(membership)
         self._audit(
             action="remove_student_from_class",
@@ -369,7 +457,7 @@ class GameRepository:
             detail={"student_id": student.student_id},
         )
         self.db.commit()
-        return ActionResponse(message=f"Student {student.student_id} removed from class {classroom.class_code}")
+        return ActionResponse(message=f"Student {student.student_id} deleted from class {classroom.class_code}")
 
     def create_assignment(
         self,
@@ -550,6 +638,7 @@ class GameRepository:
             .filter(
                 StudentClassMembershipModel.student_id_fk == student.id,
                 StudentClassMembershipModel.classroom_id == classroom.id,
+                StudentClassMembershipModel.status == "active",
             )
             .first()
         )
@@ -616,9 +705,16 @@ class GameRepository:
         )
         return row
 
-    def create_session(self, state: GameState, class_code: str | None = None, assignment_code: str | None = None) -> None:
+    def create_session(
+        self,
+        state: GameState,
+        class_code: str | None = None,
+        assignment_code: str | None = None,
+        student_id: str | None = None,
+    ) -> None:
         row = GameSessionModel(
             session_id=state.session_id,
+            student_id=student_id.upper() if student_id else None,
             player_name=state.player_name,
             city=state.city,
             day=state.day,
@@ -674,7 +770,12 @@ class GameRepository:
             class_code=classroom.class_code,
             assignment_code=assignment.assignment_code,
         )
-        self.create_session(state, class_code=classroom.class_code, assignment_code=assignment.assignment_code)
+        self.create_session(
+            state,
+            class_code=classroom.class_code,
+            assignment_code=assignment.assignment_code,
+            student_id=student_id,
+        )
         return state
 
     def get_state(self, session_id: str) -> GameState | None:
@@ -742,6 +843,38 @@ class GameRepository:
         )
         self.db.add(log)
         self.db.commit()
+
+    def turn_in_assignment(self, *, session_id: str, student_id: str) -> ActionResponse:
+        row = self.db.get(GameSessionModel, session_id)
+        if row is None:
+            raise ValueError("Session not found")
+        if not row.student_id or row.student_id != student_id.upper():
+            raise ValueError("Session does not belong to this student")
+
+        enrollment = (
+            self.db.query(AssignmentEnrollmentModel, AssignmentModel, ClassroomModel)
+            .join(AssignmentModel, AssignmentModel.id == AssignmentEnrollmentModel.assignment_id)
+            .join(ClassroomModel, ClassroomModel.id == AssignmentModel.classroom_id)
+            .filter(AssignmentEnrollmentModel.session_id == session_id)
+            .first()
+        )
+        if enrollment is None:
+            raise ValueError("Session is not linked to a class assignment")
+
+        _, assignment, classroom = enrollment
+        if row.status == "completed":
+            return ActionResponse(message=f"Assignment {assignment.assignment_code} already turned in")
+
+        row.status = "completed"
+        self._audit(
+            action="turn_in_assignment",
+            target_type="assignment",
+            target_key=assignment.assignment_code,
+            detail={"session_id": session_id, "student_id": student_id.upper(), "class_code": classroom.class_code},
+            actor="student",
+        )
+        self.db.commit()
+        return ActionResponse(message=f"Turned in assignment {assignment.assignment_code} for class {classroom.class_code}")
 
     def teacher_overview(self) -> TeacherOverviewResponse:
         total = self.db.query(func.count(GameSessionModel.session_id)).scalar() or 0

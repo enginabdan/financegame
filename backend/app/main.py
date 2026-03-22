@@ -36,8 +36,10 @@ from .schemas import (
     StudentClassAssignmentsResponse,
     StudentProfileSummary,
     StudentRegisterRequest,
+    StudentTurnInRequest,
     StudentJoinAssignmentRequest,
     TeacherClassStudentRow,
+    TeacherClassStudentUpdateRequest,
     UpdateAssignmentRequest,
     UpdateClassroomRequest,
     UpdateTeacherSessionRequest,
@@ -118,7 +120,14 @@ def new_game(req: NewGameRequest, db: Session = Depends(get_db)) -> GameState:
 @app.post("/api/student/register", response_model=StudentProfileSummary)
 def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db)) -> StudentProfileSummary:
     repo = GameRepository(db)
-    return repo.register_student(display_name=req.display_name)
+    try:
+        return repo.register_student_with_identity(
+            first_name=req.first_name,
+            last_name=req.last_name,
+            school_email=req.school_email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/student/join-class", response_model=StudentClassSummary)
@@ -160,6 +169,15 @@ def student_class_assignments(class_code: str, student_id: str, db: Session = De
     repo = GameRepository(db)
     try:
         return repo.student_class_assignments(student_id=student_id, class_code=class_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/student/turn-in", response_model=ActionResponse)
+def student_turn_in(req: StudentTurnInRequest, db: Session = Depends(get_db)) -> ActionResponse:
+    repo = GameRepository(db)
+    try:
+        return repo.turn_in_assignment(session_id=req.session_id, student_id=req.student_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -232,6 +250,22 @@ def remove_student_from_class(
     repo = GameRepository(db)
     try:
         return repo.remove_student_from_class(class_code=class_code, student_id=student_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.patch("/api/teacher/classes/{class_code}/students/{student_id}", response_model=ActionResponse)
+def update_student_membership_status(
+    class_code: str,
+    student_id: str,
+    req: TeacherClassStudentUpdateRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.set_student_class_membership_status(class_code=class_code, student_id=student_id, status=req.status)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

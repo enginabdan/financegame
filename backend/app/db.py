@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 
@@ -42,7 +42,11 @@ class StudentProfileModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     student_id: Mapped[str] = mapped_column(String(24), nullable=False, unique=True, index=True)
-    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False, default="Student")
+    first_name: Mapped[str] = mapped_column(String(80), nullable=False, default="Student")
+    last_name: Mapped[str] = mapped_column(String(80), nullable=False, default="User")
+    school_email: Mapped[str] = mapped_column(String(160), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     memberships: Mapped[list["StudentClassMembershipModel"]] = relationship(
@@ -75,6 +79,7 @@ class GameSessionModel(Base):
     __tablename__ = "game_sessions"
 
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    student_id: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
     player_name: Mapped[str] = mapped_column(String(120), nullable=False)
     city: Mapped[str] = mapped_column(String(120), nullable=False)
     day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -123,6 +128,7 @@ class StudentClassMembershipModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     student_id_fk: Mapped[int] = mapped_column(ForeignKey("student_profiles.id"), nullable=False, index=True)
     classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     student: Mapped[StudentProfileModel] = relationship(back_populates="memberships")
@@ -220,3 +226,56 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    _runtime_migrate()
+
+
+def _runtime_migrate() -> None:
+    # Lightweight migration for existing sqlite deployments without Alembic.
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        profile_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(student_profiles)")).fetchall()}
+        if profile_cols:
+            if "first_name" not in profile_cols:
+                conn.execute(text("ALTER TABLE student_profiles ADD COLUMN first_name VARCHAR(80) NOT NULL DEFAULT 'Student'"))
+            if "last_name" not in profile_cols:
+                conn.execute(text("ALTER TABLE student_profiles ADD COLUMN last_name VARCHAR(80) NOT NULL DEFAULT 'User'"))
+            if "school_email" not in profile_cols:
+                conn.execute(text("ALTER TABLE student_profiles ADD COLUMN school_email VARCHAR(160) NOT NULL DEFAULT ''"))
+                conn.execute(
+                    text(
+                        "UPDATE student_profiles "
+                        "SET school_email = lower(replace(student_id, ' ', '')) || '@student.local' "
+                        "WHERE school_email = '' OR school_email IS NULL"
+                    )
+                )
+            if "is_active" not in profile_cols:
+                conn.execute(text("ALTER TABLE student_profiles ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+            conn.execute(
+                text(
+                    "UPDATE student_profiles "
+                    "SET first_name = CASE "
+                    "WHEN first_name IS NULL OR first_name = '' THEN substr(display_name, 1, instr(display_name || ' ', ' ') - 1) "
+                    "ELSE first_name END"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE student_profiles "
+                    "SET last_name = CASE "
+                    "WHEN last_name IS NULL OR last_name = '' THEN trim(substr(display_name || ' User', instr(display_name || ' ', ' ') + 1)) "
+                    "ELSE last_name END"
+                )
+            )
+            conn.execute(
+                text("CREATE UNIQUE INDEX IF NOT EXISTS ix_student_profiles_school_email ON student_profiles (school_email)")
+            )
+
+        membership_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(student_class_memberships)")).fetchall()}
+        if membership_cols and "status" not in membership_cols:
+            conn.execute(
+                text("ALTER TABLE student_class_memberships ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'")
+            )
+        session_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(game_sessions)")).fetchall()}
+        if session_cols and "student_id" not in session_cols:
+            conn.execute(text("ALTER TABLE game_sessions ADD COLUMN student_id VARCHAR(24)"))

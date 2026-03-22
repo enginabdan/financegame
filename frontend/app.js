@@ -3,6 +3,9 @@ const API_BASE = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 let sessionId = null;
 let dayResults = [];
 let studentId = localStorage.getItem("financegame_student_id") || "";
+let studentFirstName = localStorage.getItem("financegame_student_first_name") || "";
+let studentLastName = localStorage.getItem("financegame_student_last_name") || "";
+let studentSchoolEmail = localStorage.getItem("financegame_student_school_email") || "";
 
 const startBtn = document.getElementById("startBtn");
 const registerStudentBtn = document.getElementById("registerStudentBtn");
@@ -11,13 +14,16 @@ const loadMyClassesBtn = document.getElementById("loadMyClassesBtn");
 const loadClassAssignmentsBtn = document.getElementById("loadClassAssignmentsBtn");
 const joinClassAssignmentBtn = document.getElementById("joinClassAssignmentBtn");
 const advanceBtn = document.getElementById("advanceBtn");
+const turnInBtn = document.getElementById("turnInBtn");
 
 const stats = document.getElementById("stats");
 const log = document.getElementById("log");
 const weeklyReport = document.getElementById("weeklyReport");
 const myClassesEl = document.getElementById("myClasses");
 
-const studentDisplayNameInput = document.getElementById("studentDisplayName");
+const studentFirstNameInput = document.getElementById("studentFirstName");
+const studentLastNameInput = document.getElementById("studentLastName");
+const studentSchoolEmailInput = document.getElementById("studentSchoolEmail");
 const studentIdReadOnlyInput = document.getElementById("studentIdReadOnly");
 const playerNameInput = document.getElementById("playerName");
 const cityInput = document.getElementById("city");
@@ -185,16 +191,26 @@ function ensureStudentProfile() {
 }
 
 function syncStudentProfileUI() {
-  studentIdReadOnlyInput.value = studentId || "";
-}
-
-function saveManualStudentId() {
-  const entered = (studentIdReadOnlyInput.value || "").trim().toUpperCase();
-  studentId = entered;
-  if (studentId) {
-    localStorage.setItem("financegame_student_id", studentId);
-  } else {
-    localStorage.removeItem("financegame_student_id");
+  if (studentIdReadOnlyInput) {
+    studentIdReadOnlyInput.value = studentId || "";
+  }
+  if (studentFirstNameInput && studentFirstName) {
+    studentFirstNameInput.value = studentFirstName;
+  }
+  if (studentLastNameInput && studentLastName) {
+    studentLastNameInput.value = studentLastName;
+  }
+  if (studentSchoolEmailInput && studentSchoolEmail) {
+    studentSchoolEmailInput.value = studentSchoolEmail;
+  }
+  const fullName = `${studentFirstName} ${studentLastName}`.trim();
+  if (fullName) {
+    if (classPlayerNameInput && !(classPlayerNameInput.value || "").trim()) {
+      classPlayerNameInput.value = fullName;
+    }
+    if (playerNameInput && !(playerNameInput.value || "").trim()) {
+      playerNameInput.value = fullName;
+    }
   }
 }
 
@@ -295,22 +311,50 @@ async function fetchJson(url, options = {}) {
 }
 
 async function registerStudent() {
-  const displayName = (studentDisplayNameInput.value || "").trim();
-  if (!displayName) {
-    appAlert("Enter student display name.");
+  const firstName = (studentFirstNameInput?.value || "").trim();
+  const lastName = (studentLastNameInput?.value || "").trim();
+  const schoolEmail = (studentSchoolEmailInput?.value || "").trim().toLowerCase();
+
+  if (!firstName || !lastName || !schoolEmail) {
+    appAlert("Enter first name, last name, and school email.");
     return;
   }
 
   const profile = await fetchJson(`${API_BASE}/api/student/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ display_name: displayName }),
+    body: JSON.stringify({
+      first_name: firstName,
+      last_name: lastName,
+      school_email: schoolEmail,
+    }),
   });
 
   studentId = profile.student_id;
+  studentFirstName = profile.first_name || firstName;
+  studentLastName = profile.last_name || lastName;
+  studentSchoolEmail = profile.school_email || schoolEmail;
   localStorage.setItem("financegame_student_id", studentId);
+  localStorage.setItem("financegame_student_first_name", studentFirstName);
+  localStorage.setItem("financegame_student_last_name", studentLastName);
+  localStorage.setItem("financegame_student_school_email", studentSchoolEmail);
+  const fullName = `${studentFirstName} ${studentLastName}`.trim();
+  if (fullName) {
+    if (classPlayerNameInput) {
+      classPlayerNameInput.value = fullName;
+    }
+    if (playerNameInput) {
+      playerNameInput.value = fullName;
+    }
+    if (studentFirstNameInput) {
+      studentFirstNameInput.value = studentFirstName;
+    }
+    if (studentLastNameInput) {
+      studentLastNameInput.value = studentLastName;
+    }
+  }
   syncStudentProfileUI();
-  appAlert(`Student profile ready. Student ID: ${studentId}`);
+  appAlert(`Student profile ready. Student ID: ${studentId}`, "Success", "success");
 }
 
 function renderMyClasses(classes) {
@@ -328,7 +372,7 @@ function renderMyClasses(classes) {
     item.className = "log-item";
     item.innerHTML = `
       <strong>${cls.class_name}</strong>
-      <p class="meta">Class Code: <strong>${cls.class_code}</strong></p>
+      <p class="meta">Class Code: <strong>${cls.class_code}</strong> | Membership: ${cls.status}</p>
       <button data-action="use-class" data-class-code="${cls.class_code}" class="secondary">Use This Class</button>
     `;
     myClassesEl.appendChild(item);
@@ -428,7 +472,8 @@ async function joinClassAssignment() {
     return;
   }
 
-  const playerName = classPlayerNameInput.value || "Student";
+  const profileName = `${studentFirstName} ${studentLastName}`.trim();
+  const playerName = (classPlayerNameInput.value || "").trim() || profileName || "Student";
   const classCode = (classCodeInput.value || "").trim().toUpperCase();
   const assignmentCode = (classAssignmentSelect.value || "").trim().toUpperCase();
 
@@ -460,6 +505,27 @@ async function joinClassAssignment() {
   sessionId = state.session_id;
   resetRunView();
   renderState(state);
+}
+
+async function turnInAssignment() {
+  if (!ensureStudentProfile()) {
+    return;
+  }
+  if (!sessionId) {
+    appAlert("Start an assignment session first.");
+    return;
+  }
+
+  const result = await fetchJson(`${API_BASE}/api/student/turn-in`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      student_id: studentId,
+      session_id: sessionId,
+    }),
+  });
+
+  appAlert(result.message || "Assignment turned in.", "Success", "success");
 }
 
 async function advanceDay() {
@@ -544,6 +610,15 @@ advanceBtn.addEventListener("click", () => {
   });
 });
 
+if (turnInBtn) {
+  turnInBtn.addEventListener("click", () => {
+    turnInAssignment().catch((err) => {
+      console.error(err);
+      appAlert(err.message || "Unexpected error while turning in assignment");
+    });
+  });
+}
+
 if (myClassesEl) {
   myClassesEl.addEventListener("click", (event) => {
     const target = event.target;
@@ -563,14 +638,6 @@ if (myClassesEl) {
 classCodeInput.addEventListener("input", () => {
   classCodeInput.value = (classCodeInput.value || "").toUpperCase().trimStart();
 });
-
-if (studentIdReadOnlyInput) {
-  studentIdReadOnlyInput.addEventListener("input", () => {
-    studentIdReadOnlyInput.value = (studentIdReadOnlyInput.value || "").toUpperCase().trimStart();
-  });
-  studentIdReadOnlyInput.addEventListener("change", saveManualStudentId);
-  studentIdReadOnlyInput.addEventListener("blur", saveManualStudentId);
-}
 
 syncStudentProfileUI();
 resetRunView();

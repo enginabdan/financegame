@@ -45,21 +45,49 @@
       </section>
 
       <section class="panel">
+        <h2>Quick Start (3 Steps)</h2>
+        <div class="log">
+          <article class="log-item">
+            <strong>Step 1</strong>
+            <p class="meta">Register / Sign In with first name, last name, and school email to get your Student ID.</p>
+          </article>
+          <article class="log-item">
+            <strong>Step 2</strong>
+            <p class="meta">Enter Class Code, click Join Class, then load and select your active assignment.</p>
+          </article>
+          <article class="log-item">
+            <strong>Step 3</strong>
+            <p class="meta">Start assignment, make daily decisions, then click Turn In Assignment when finished.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Student Profile (Required for Classwork)</h2>
         <div class="grid three">
           <label>
-            Student Display Name
-            <input id="studentDisplayName" value="Student" />
+            First Name
+            <input id="studentFirstName" value="Student" />
+          </label>
+          <label>
+            Last Name
+            <input id="studentLastName" value="User" />
+          </label>
+          <div>
+            <button id="registerStudentBtn" class="btn-no-margin">Register / Sign In</button>
+          </div>
+        </div>
+        <div class="grid two mt-sm">
+          <label>
+            School Email
+            <input id="studentSchoolEmail" placeholder="student@school.edu" />
           </label>
           <label>
             Student ID
-            <input id="studentIdReadOnly" placeholder="Create profile or enter existing ID" />
+            <input id="studentIdReadOnly" placeholder="Auto-generated after sign in" readonly />
           </label>
-          <div>
-            <button id="registerStudentBtn" class="btn-no-margin">Create / Load Profile</button>
-          </div>
         </div>
-        <p class="meta">Your Student ID is used to secure class membership and assignment visibility.</p>
+        <p class="meta">Use first name, last name, and school email. Student ID is generated and reused automatically.</p>
       </section>
 
       <section class="panel">
@@ -119,6 +147,9 @@
       <section class="panel" id="statePanel">
         <h2>Game State</h2>
         <div class="stats" id="stats"></div>
+        <div class="actions-row mt-sm">
+          <button id="turnInBtn" class="secondary btn-no-margin">Turn In Assignment</button>
+        </div>
       </section>
 
       <section class="panel" id="decisionPanel">

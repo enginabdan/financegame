@@ -19,12 +19,17 @@ class StudentJoinAssignmentRequest(BaseModel):
 
 
 class StudentRegisterRequest(BaseModel):
-    display_name: str = Field(min_length=2, max_length=120)
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    school_email: str = Field(min_length=5, max_length=160)
 
 
 class StudentProfileSummary(BaseModel):
     student_id: str
-    display_name: str
+    first_name: str
+    last_name: str
+    school_email: str
+    is_active: bool = True
     created_at: datetime
 
 
@@ -36,7 +41,13 @@ class StudentClassJoinRequest(BaseModel):
 class StudentClassSummary(BaseModel):
     class_code: str
     class_name: str
+    status: Literal["active", "inactive"] = "active"
     joined_at: datetime
+
+
+class StudentTurnInRequest(BaseModel):
+    student_id: str = Field(min_length=6, max_length=24)
+    session_id: str = Field(min_length=6, max_length=80)
 
 
 class StudentAssignmentOption(BaseModel):
@@ -55,8 +66,15 @@ class StudentClassAssignmentsResponse(BaseModel):
 
 class TeacherClassStudentRow(BaseModel):
     student_id: str
-    display_name: str
+    first_name: str
+    last_name: str
+    school_email: str
+    status: Literal["active", "inactive"] = "active"
     joined_at: datetime
+
+
+class TeacherClassStudentUpdateRequest(BaseModel):
+    status: Literal["active", "inactive"]
 
 
 class DayAllocation(BaseModel):

@@ -369,13 +369,18 @@ function renderClassStudents(classCode, rows) {
   }
 
   for (const row of rows) {
+    const fullName = `${row.first_name || ""} ${row.last_name || ""}`.trim() || row.student_id;
+    const nextStatus = row.status === "inactive" ? "active" : "inactive";
+    const toggleLabel = row.status === "inactive" ? "Set Active" : "Set Inactive";
     const card = document.createElement("article");
     card.className = "log-item";
     card.innerHTML = `
-      <strong>${row.display_name}</strong>
-      <p class="meta">Student ID: ${row.student_id}</p>
+      <strong>${fullName}</strong>
+      <p class="meta">Student ID: ${row.student_id} | Status: ${row.status}</p>
+      <p class="meta">Email: ${row.school_email || "-"}</p>
       <p class="meta">Joined: ${new Date(row.joined_at).toLocaleString()}</p>
       <div class="actions-row">
+        <button data-action="toggle-class-student" data-next-status="${nextStatus}" data-class-code="${classCode}" data-student-id="${row.student_id}" class="warn">${toggleLabel}</button>
         <button data-action="remove-class-student" data-class-code="${classCode}" data-student-id="${row.student_id}" class="danger">Remove Student</button>
       </div>
     `;
@@ -1338,6 +1343,32 @@ async function removeClassStudent(classCode, studentId) {
   }
 }
 
+async function updateClassStudentStatus(classCode, studentId, status) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const ok = await showConfirmDialog({
+    title: "Update Student Status",
+    message: `Set student ${studentId} as ${status} in class ${classCode}?`,
+    confirmText: "Apply",
+  });
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/classes/${classCode}/students/${studentId}`, teacherKey, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    await loadClassStudents();
+  } catch (err) {
+    appAlert(err.message || "Failed to update student status");
+  }
+}
+
 async function deleteStrategySession(sessionId) {
   const access = getAccess(true);
   if (!access) {
@@ -1709,15 +1740,22 @@ if (classStudentsListEl) {
     }
 
     const action = target.getAttribute("data-action");
-    if (action !== "remove-class-student") {
-      return;
-    }
     const classCode = target.getAttribute("data-class-code");
     const studentId = target.getAttribute("data-student-id");
     if (!classCode || !studentId) {
       return;
     }
-    removeClassStudent(classCode, studentId).catch(() => {});
+    if (action === "remove-class-student") {
+      removeClassStudent(classCode, studentId).catch(() => {});
+      return;
+    }
+    if (action === "toggle-class-student") {
+      const nextStatus = target.getAttribute("data-next-status");
+      if (!nextStatus) {
+        return;
+      }
+      updateClassStudentStatus(classCode, studentId, nextStatus).catch(() => {});
+    }
   });
 }
 
