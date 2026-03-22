@@ -443,7 +443,8 @@ function renderClassAssignments(data) {
   for (const item of loadedAssignments) {
     const option = document.createElement("option");
     option.value = item.assignment_code;
-    option.textContent = `${item.title} (${item.assignment_code}) - ${item.city} - ${item.duration_days} days`;
+    const minutesPerDay = Number(item.sprint_minutes_per_day || 2);
+    option.textContent = `${item.title} (${item.assignment_code}) - ${item.city} - ${item.duration_days} days - ${minutesPerDay} min/day`;
     classAssignmentSelect.appendChild(option);
   }
 
@@ -491,7 +492,7 @@ async function joinClassAssignment() {
     return;
   }
 
-  const state = await fetchJson(`${API_BASE}/api/student/join-assignment`, {
+  const sprintState = await fetchJson(`${API_BASE}/api/student/join-assignment-sprint`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -501,10 +502,19 @@ async function joinClassAssignment() {
       assignment_code: assignmentCode,
     }),
   });
-
-  sessionId = state.session_id;
-  resetRunView();
-  renderState(state);
+  const sprintBridge = window.FinanceSprint;
+  if (!sprintBridge || typeof sprintBridge.startClassAssignmentSprint !== "function") {
+    appAlert("Sprint module is not ready. Refresh and try again.");
+    return;
+  }
+  sprintBridge.startClassAssignmentSprint({
+    state: sprintState,
+    studentId,
+    classCode,
+    assignmentCode,
+  });
+  appAlert("Class sprint assignment started.", "Success", "success");
+  document.getElementById("sprintOffers")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function turnInAssignment() {

@@ -466,6 +466,7 @@ class GameRepository:
         city: str,
         start_cash: float,
         duration_days: int,
+        sprint_minutes_per_day: int,
     ) -> AssignmentSummary:
         classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
         if classroom is None:
@@ -479,6 +480,7 @@ class GameRepository:
             city=city.strip(),
             start_cash=start_cash,
             duration_days=duration_days,
+            sprint_minutes_per_day=sprint_minutes_per_day,
             is_active=True,
         )
         self.db.add(row)
@@ -486,7 +488,7 @@ class GameRepository:
             action="create_assignment",
             target_type="assignment",
             target_key=assignment_code,
-            detail={"class_code": classroom.class_code, "title": title},
+            detail={"class_code": classroom.class_code, "title": title, "sprint_minutes_per_day": sprint_minutes_per_day},
         )
         self.db.commit()
         self.db.refresh(row)
@@ -498,6 +500,7 @@ class GameRepository:
             city=row.city,
             start_cash=row.start_cash,
             duration_days=row.duration_days,
+            sprint_minutes_per_day=row.sprint_minutes_per_day,
             is_active=row.is_active,
             enrolled_sessions=0,
             created_at=row.created_at,
@@ -511,6 +514,7 @@ class GameRepository:
         city: str | None,
         start_cash: float | None,
         duration_days: int | None,
+        sprint_minutes_per_day: int | None,
         is_active: bool | None,
     ) -> AssignmentSummary:
         row_data = (
@@ -531,6 +535,8 @@ class GameRepository:
             assignment.start_cash = start_cash
         if duration_days is not None:
             assignment.duration_days = duration_days
+        if sprint_minutes_per_day is not None:
+            assignment.sprint_minutes_per_day = sprint_minutes_per_day
         if is_active is not None:
             assignment.is_active = is_active
         self._audit(
@@ -542,6 +548,7 @@ class GameRepository:
                 "city": assignment.city,
                 "start_cash": assignment.start_cash,
                 "duration_days": assignment.duration_days,
+                "sprint_minutes_per_day": assignment.sprint_minutes_per_day,
                 "is_active": assignment.is_active,
             },
         )
@@ -561,6 +568,7 @@ class GameRepository:
             city=assignment.city,
             start_cash=assignment.start_cash,
             duration_days=assignment.duration_days,
+            sprint_minutes_per_day=assignment.sprint_minutes_per_day,
             is_active=assignment.is_active,
             enrolled_sessions=int(enrolled),
             created_at=assignment.created_at,
@@ -580,6 +588,7 @@ class GameRepository:
                     "city",
                     "start_cash",
                     "duration_days",
+                    "sprint_minutes_per_day",
                     "is_active",
                     "created_at",
                 ],
@@ -619,6 +628,7 @@ class GameRepository:
                     city=assignment.city,
                     start_cash=assignment.start_cash,
                     duration_days=assignment.duration_days,
+                    sprint_minutes_per_day=assignment.sprint_minutes_per_day,
                     is_active=assignment.is_active,
                     enrolled_sessions=int(enrolled),
                     created_at=assignment.created_at,
@@ -661,6 +671,7 @@ class GameRepository:
                     city=row.city,
                     start_cash=row.start_cash,
                     duration_days=row.duration_days,
+                    sprint_minutes_per_day=row.sprint_minutes_per_day,
                 )
                 for row in rows
             ],
@@ -1169,10 +1180,18 @@ class GameRepository:
         assignment_minutes: int,
         offers: list[dict],
         day_brief: str,
+        student_id: str | None = None,
+        class_code: str | None = None,
+        assignment_code: str | None = None,
+        is_class_assignment: bool = False,
     ) -> StrategyPublicState:
         session_id = self._unique_strategy_session_id()
         row = StrategySessionModel(
             session_id=session_id,
+            student_id=student_id.upper() if student_id else None,
+            class_code=class_code.upper() if class_code else None,
+            assignment_code=assignment_code.upper() if assignment_code else None,
+            is_class_assignment=is_class_assignment,
             player_name=player_name.strip() or "Student",
             current_day=1,
             total_days=total_days,
@@ -1189,10 +1208,73 @@ class GameRepository:
             action="create_strategy_session",
             target_type="strategy_session",
             target_key=session_id,
-            detail={"player_name": row.player_name, "total_days": total_days},
+            detail={
+                "player_name": row.player_name,
+                "total_days": total_days,
+                "class_code": row.class_code,
+                "assignment_code": row.assignment_code,
+                "is_class_assignment": row.is_class_assignment,
+            },
         )
         self.db.commit()
         return self._strategy_public_state(row)
+
+    def create_strategy_session_from_assignment(
+        self,
+        *,
+        student_id: str,
+        player_name: str,
+        class_code: str,
+        assignment_code: str,
+        offers: list[dict],
+        day_brief: str,
+    ) -> StrategyPublicState:
+        if not self._student_is_member_of_class(student_id=student_id, class_code=class_code):
+            raise ValueError("Student is not a member of this class")
+        assignment_row = self._assignment_by_codes(class_code=class_code, assignment_code=assignment_code)
+        if assignment_row is None:
+            raise ValueError("Assignment not found or inactive")
+
+        assignment, classroom = assignment_row
+        assignment_minutes = max(20, min(1200, int(assignment.sprint_minutes_per_day) * 30))
+        return self.create_strategy_session(
+            player_name=player_name,
+            total_days=30,
+            assignment_minutes=assignment_minutes,
+            offers=offers,
+            day_brief=day_brief,
+            student_id=student_id,
+            class_code=classroom.class_code,
+            assignment_code=assignment.assignment_code,
+            is_class_assignment=True,
+        )
+
+    def turn_in_strategy_assignment(self, *, session_id: str, student_id: str) -> ActionResponse:
+        row = self.db.get(StrategySessionModel, session_id)
+        if row is None:
+            raise ValueError("Sprint session not found")
+        if not row.is_class_assignment:
+            raise ValueError("Sprint session is not linked to a class assignment")
+        if not row.student_id or row.student_id != student_id.upper():
+            raise ValueError("Sprint session does not belong to this student")
+        if row.turned_in_at is not None:
+            return ActionResponse(message=f"Assignment {row.assignment_code or '-'} already turned in")
+
+        row.status = "completed"
+        row.current_offers_json = "[]"
+        row.current_day_brief = "Assignment turned in."
+        row.turned_in_at = datetime.utcnow()
+        self._audit(
+            action="turn_in_strategy_assignment",
+            target_type="assignment",
+            target_key=row.assignment_code or row.session_id,
+            detail={"session_id": row.session_id, "student_id": student_id.upper(), "class_code": row.class_code},
+            actor="student",
+        )
+        self.db.commit()
+        return ActionResponse(
+            message=f"Turned in sprint assignment {row.assignment_code or '-'} for class {row.class_code or '-'}"
+        )
 
     def get_strategy_state(self, session_id: str) -> StrategyPublicState | None:
         row = self.db.get(StrategySessionModel, session_id)
@@ -1411,12 +1493,17 @@ class GameRepository:
                     "current_day",
                     "total_days",
                     "assignment_minutes",
+                    "student_id",
+                    "class_code",
+                    "assignment_code",
+                    "is_class_assignment",
                     "status",
                     "total_profit",
                     "optimal_profit",
                     "selected_count",
                     "current_offers_json",
                     "current_day_brief",
+                    "turned_in_at",
                     "created_at",
                     "updated_at",
                 ],
@@ -1743,6 +1830,7 @@ class GameRepository:
                     city=str(assignment.get("city", "Charlotte, NC"))[:120],
                     start_cash=float(assignment.get("start_cash", 1800.0)),
                     duration_days=int(assignment.get("duration_days", 30)),
+                    sprint_minutes_per_day=int(assignment.get("sprint_minutes_per_day", 2)),
                     is_active=bool(assignment.get("is_active", True)),
                     created_at=self._parse_dt(assignment.get("created_at")) or datetime.utcnow(),
                 )
@@ -1770,6 +1858,7 @@ class GameRepository:
                 city=str(assignment.get("city", "Charlotte, NC"))[:120],
                 start_cash=float(assignment.get("start_cash", 1800.0)),
                 duration_days=int(assignment.get("duration_days", 30)),
+                sprint_minutes_per_day=int(assignment.get("sprint_minutes_per_day", 2)),
                 is_active=bool(assignment.get("is_active", True)),
                 created_at=self._parse_dt(assignment.get("created_at")) or datetime.utcnow(),
             )
@@ -1845,6 +1934,10 @@ class GameRepository:
 
         strategy_row = StrategySessionModel(
             session_id=session_id,
+            student_id=str(strategy.get("student_id", ""))[:24] or None,
+            class_code=str(strategy.get("class_code", ""))[:24] or None,
+            assignment_code=str(strategy.get("assignment_code", ""))[:24] or None,
+            is_class_assignment=bool(strategy.get("is_class_assignment", False)),
             player_name=str(strategy.get("player_name", "Restored Sprint"))[:120],
             current_day=int(strategy.get("current_day", 1)),
             total_days=int(strategy.get("total_days", 30)),
@@ -1855,6 +1948,7 @@ class GameRepository:
             selected_count=int(strategy.get("selected_count", 0)),
             current_offers_json=str(strategy.get("current_offers_json", "[]")),
             current_day_brief=str(strategy.get("current_day_brief", ""))[:255],
+            turned_in_at=self._parse_dt(strategy.get("turned_in_at")),
             created_at=self._parse_dt(strategy.get("created_at")) or datetime.utcnow(),
             updated_at=self._parse_dt(strategy.get("updated_at")) or datetime.utcnow(),
         )

@@ -1,6 +1,8 @@
+(() => {
 const API_BASE = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 
 const startBtn = document.getElementById("startSprintBtn");
+const turnInSprintBtn = document.getElementById("turnInSprintBtn");
 const offersEl = document.getElementById("sprintOffers");
 const progressStatsEl = document.getElementById("sprintProgressStats");
 const dayBriefEl = document.getElementById("sprintDayBrief");
@@ -17,6 +19,7 @@ const nativeAlert = window.alert.bind(window);
 let toastStackEl = null;
 
 let sprintState = null;
+let sprintClassContext = null;
 
 function detectAlertType(message, explicitType) {
   if (explicitType) {
@@ -173,6 +176,10 @@ function renderProgress() {
     progressStatsEl.appendChild(div);
   }
   dayBriefEl.textContent = sprintState.day_brief || "";
+  if (sprintClassContext && turnInSprintBtn) {
+    const canTurnIn = sprintState.status === "completed" || sprintState.current_day > 1;
+    turnInSprintBtn.style.display = canTurnIn ? "" : "none";
+  }
 }
 
 function renderOffers() {
@@ -236,15 +243,18 @@ async function fetchJson(url, options = {}) {
 
 async function startSprint() {
   const playerName = document.getElementById("sprintPlayerName").value || "Student";
-  const totalDays = Number(document.getElementById("sprintTotalDays").value || 30);
   const assignmentMinutes = Number(document.getElementById("sprintAssignmentMinutes").value || 60);
+  sprintClassContext = null;
+  if (turnInSprintBtn) {
+    turnInSprintBtn.style.display = "none";
+  }
 
   const state = await fetchJson(`${API_BASE}/api/strategy/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       player_name: playerName,
-      total_days: totalDays,
+      total_days: 30,
       assignment_minutes: assignmentMinutes,
     }),
   });
@@ -253,6 +263,44 @@ async function startSprint() {
   finalResultEl.innerHTML = "";
   renderProgress();
   renderOffers();
+}
+
+function startClassAssignmentSprint({ state, studentId, classCode, assignmentCode }) {
+  sprintClassContext = {
+    studentId,
+    classCode,
+    assignmentCode,
+  };
+  if (turnInSprintBtn) {
+    turnInSprintBtn.style.display = "";
+  }
+  sprintState = state;
+  decisionLogEl.innerHTML = "";
+  finalResultEl.innerHTML = "";
+  renderProgress();
+  renderOffers();
+}
+
+async function turnInClassAssignmentSprint() {
+  if (!sprintState || !sprintClassContext) {
+    appAlert("No class sprint assignment in progress.");
+    return;
+  }
+  const result = await fetchJson(`${API_BASE}/api/student/turn-in-sprint`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      student_id: sprintClassContext.studentId,
+      session_id: sprintState.session_id,
+    }),
+  });
+  const refreshed = await fetchJson(`${API_BASE}/api/strategy/${sprintState.session_id}`);
+  sprintState = refreshed;
+  renderProgress();
+  renderOffers();
+  const finalResult = await fetchJson(`${API_BASE}/api/strategy/${sprintState.session_id}/result`);
+  renderFinalResult(finalResult);
+  appAlert(result.message || "Sprint assignment turned in.", "Success", "success");
 }
 
 async function chooseOffer(offerId, title) {
@@ -283,3 +331,17 @@ if (startBtn && offersEl && progressStatsEl && dayBriefEl && decisionLogEl && fi
     });
   });
 }
+
+if (turnInSprintBtn) {
+  turnInSprintBtn.addEventListener("click", () => {
+    turnInClassAssignmentSprint().catch((err) => {
+      console.error(err);
+      appAlert(err.message || "Failed to turn in sprint assignment");
+    });
+  });
+}
+
+window.FinanceSprint = {
+  startClassAssignmentSprint,
+};
+})();

@@ -164,6 +164,43 @@ def join_assignment(req: StudentJoinAssignmentRequest, db: Session = Depends(get
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/student/join-assignment-sprint", response_model=StrategyPublicState)
+def join_assignment_sprint(req: StudentJoinAssignmentRequest, db: Session = Depends(get_db)) -> StrategyPublicState:
+    repo = GameRepository(db)
+    brief, offers = strategy_engine.build_day_offers(
+        day=1,
+        total_days=30,
+        running_profit=0.0,
+        previous_channels=[],
+    )
+    offers_payload = [
+        {
+            "offer_id": o.offer_id,
+            "title": o.title,
+            "text": o.text,
+            "channel": o.channel,
+            "time_hours": o.time_hours,
+            "miles": o.miles,
+            "cash_in": o.cash_in,
+            "cash_out": o.cash_out,
+            "risk": o.risk,
+            "expected_profit": o.expected_profit,
+        }
+        for o in offers
+    ]
+    try:
+        return repo.create_strategy_session_from_assignment(
+            student_id=req.student_id,
+            player_name=req.player_name,
+            class_code=req.class_code,
+            assignment_code=req.assignment_code,
+            offers=offers_payload,
+            day_brief=brief,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/student/classes/{class_code}/assignments", response_model=StudentClassAssignmentsResponse)
 def student_class_assignments(class_code: str, student_id: str, db: Session = Depends(get_db)) -> StudentClassAssignmentsResponse:
     repo = GameRepository(db)
@@ -178,6 +215,15 @@ def student_turn_in(req: StudentTurnInRequest, db: Session = Depends(get_db)) ->
     repo = GameRepository(db)
     try:
         return repo.turn_in_assignment(session_id=req.session_id, student_id=req.student_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/student/turn-in-sprint", response_model=ActionResponse)
+def student_turn_in_sprint(req: StudentTurnInRequest, db: Session = Depends(get_db)) -> ActionResponse:
+    repo = GameRepository(db)
+    try:
+        return repo.turn_in_strategy_assignment(session_id=req.session_id, student_id=req.student_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -314,6 +360,7 @@ def create_assignment(
             city=req.city,
             start_cash=req.start_cash,
             duration_days=req.duration_days,
+            sprint_minutes_per_day=req.sprint_minutes_per_day,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -346,6 +393,7 @@ def update_assignment(
             city=req.city,
             start_cash=req.start_cash,
             duration_days=req.duration_days,
+            sprint_minutes_per_day=req.sprint_minutes_per_day,
             is_active=req.is_active,
         )
     except ValueError as exc:

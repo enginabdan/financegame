@@ -217,21 +217,21 @@
 
       <section class="panel">
         <h2>Start Sprint Assignment</h2>
-        <div class="grid three">
+        <div class="grid two">
           <label>
             Student Name
             <input id="sprintPlayerName" value="Student" />
-          </label>
-          <label>
-            Total Days
-            <input id="sprintTotalDays" type="number" value="30" min="7" max="45" />
           </label>
           <label>
             Assignment Minutes
             <input id="sprintAssignmentMinutes" type="number" value="60" min="20" max="120" />
           </label>
         </div>
-        <button id="startSprintBtn">Start Sprint</button>
+        <p class="meta mt-sm">Sprint always simulates <strong>30 days</strong>. Selected minutes only control classroom time window.</p>
+        <div class="actions-row">
+          <button id="startSprintBtn" class="btn-no-margin">Start Sprint</button>
+          <button id="turnInSprintBtn" class="secondary btn-no-margin" style="display: none;">Turn In Sprint Assignment</button>
+        </div>
       </section>
 
       <section class="panel">

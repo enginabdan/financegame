@@ -65,6 +65,7 @@ class AssignmentModel(Base):
     city: Mapped[str] = mapped_column(String(120), nullable=False, default="Charlotte, NC")
     start_cash: Mapped[float] = mapped_column(Float, nullable=False, default=1800.0)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    sprint_minutes_per_day: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -159,6 +160,10 @@ class StrategySessionModel(Base):
     __tablename__ = "strategy_sessions"
 
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    student_id: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
+    class_code: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
+    assignment_code: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
+    is_class_assignment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     player_name: Mapped[str] = mapped_column(String(120), nullable=False)
     current_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     total_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
@@ -169,6 +174,7 @@ class StrategySessionModel(Base):
     selected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     current_offers_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     current_day_brief: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    turned_in_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -276,6 +282,21 @@ def _runtime_migrate() -> None:
             conn.execute(
                 text("ALTER TABLE student_class_memberships ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'")
             )
+        assignment_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(assignments)")).fetchall()}
+        if assignment_cols and "sprint_minutes_per_day" not in assignment_cols:
+            conn.execute(text("ALTER TABLE assignments ADD COLUMN sprint_minutes_per_day INTEGER NOT NULL DEFAULT 2"))
         session_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(game_sessions)")).fetchall()}
         if session_cols and "student_id" not in session_cols:
             conn.execute(text("ALTER TABLE game_sessions ADD COLUMN student_id VARCHAR(24)"))
+        strategy_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(strategy_sessions)")).fetchall()}
+        if strategy_cols:
+            if "student_id" not in strategy_cols:
+                conn.execute(text("ALTER TABLE strategy_sessions ADD COLUMN student_id VARCHAR(24)"))
+            if "class_code" not in strategy_cols:
+                conn.execute(text("ALTER TABLE strategy_sessions ADD COLUMN class_code VARCHAR(24)"))
+            if "assignment_code" not in strategy_cols:
+                conn.execute(text("ALTER TABLE strategy_sessions ADD COLUMN assignment_code VARCHAR(24)"))
+            if "is_class_assignment" not in strategy_cols:
+                conn.execute(text("ALTER TABLE strategy_sessions ADD COLUMN is_class_assignment BOOLEAN NOT NULL DEFAULT 0"))
+            if "turned_in_at" not in strategy_cols:
+                conn.execute(text("ALTER TABLE strategy_sessions ADD COLUMN turned_in_at DATETIME"))

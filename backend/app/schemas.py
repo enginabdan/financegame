@@ -56,6 +56,7 @@ class StudentAssignmentOption(BaseModel):
     city: str
     start_cash: float
     duration_days: int
+    sprint_minutes_per_day: int
 
 
 class StudentClassAssignmentsResponse(BaseModel):
@@ -147,6 +148,7 @@ class CreateAssignmentRequest(BaseModel):
     city: str = "Charlotte, NC"
     start_cash: float = Field(default=1800.0, ge=200, le=10000)
     duration_days: int = Field(default=30, ge=7, le=90)
+    sprint_minutes_per_day: int = Field(default=2, ge=1, le=10)
 
 
 class UpdateAssignmentRequest(BaseModel):
@@ -154,6 +156,7 @@ class UpdateAssignmentRequest(BaseModel):
     city: str | None = None
     start_cash: float | None = Field(default=None, ge=200, le=10000)
     duration_days: int | None = Field(default=None, ge=7, le=90)
+    sprint_minutes_per_day: int | None = Field(default=None, ge=1, le=10)
     is_active: bool | None = None
 
 
@@ -164,6 +167,7 @@ class AssignmentSummary(BaseModel):
     city: str
     start_cash: float
     duration_days: int
+    sprint_minutes_per_day: int
     is_active: bool
     enrolled_sessions: int
     created_at: datetime

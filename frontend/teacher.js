@@ -43,6 +43,7 @@ const assignTitleInput = document.getElementById("assignTitleInput");
 const assignCityInput = document.getElementById("assignCityInput");
 const assignStartCashInput = document.getElementById("assignStartCashInput");
 const assignDurationInput = document.getElementById("assignDurationInput");
+const assignSprintMinutesInput = document.getElementById("assignSprintMinutesInput");
 const classStudentsClassCodeInput = document.getElementById("classStudentsClassCodeInput");
 const rubricAssignmentCodeInput = document.getElementById("rubricAssignmentCodeInput");
 const filterPlayerNameInput = document.getElementById("filterPlayerName");
@@ -345,6 +346,7 @@ function renderAssignments(assignments) {
       <strong>${item.title}</strong>
       <p class="meta">Class: ${item.class_code} | Assignment Code: <strong>${item.assignment_code}</strong></p>
       <p class="meta">City: ${item.city} | Start Cash: ${money(item.start_cash)} | Duration: ${item.duration_days} days</p>
+      <p class="meta">Sprint Pace: ${item.sprint_minutes_per_day} min/day (${item.sprint_minutes_per_day * 30} min total for 30 days)</p>
       <p class="meta">Enrolled Students: ${item.enrolled_sessions} | Active: ${item.is_active ? "Yes" : "No"}</p>
       <div class="actions-row">
         <button data-action="copy-assign-class" data-value="${item.class_code}" class="secondary">Copy Class Code</button>
@@ -1017,9 +1019,14 @@ async function createAssignment() {
   const city = assignCityInput.value.trim() || "Charlotte, NC";
   const startCash = Number(assignStartCashInput.value || 1800);
   const durationDays = Number(assignDurationInput.value || 30);
+  const sprintMinutesPerDay = Number(assignSprintMinutesInput.value || 2);
 
   if (!classCode || !title) {
     appAlert("Class code and assignment title are required");
+    return;
+  }
+  if (!Number.isFinite(sprintMinutesPerDay) || sprintMinutesPerDay < 1 || sprintMinutesPerDay > 10) {
+    appAlert("Sprint minutes/day must be between 1 and 10.");
     return;
   }
 
@@ -1035,6 +1042,7 @@ async function createAssignment() {
         city,
         start_cash: startCash,
         duration_days: durationDays,
+        sprint_minutes_per_day: Math.round(sprintMinutesPerDay),
       }),
     });
 
@@ -1129,11 +1137,20 @@ async function editAssignment(assignmentCode) {
   if (durationRaw === null) {
     return;
   }
+  const sprintMinutesRaw = prompt("Sprint minutes per day (1-10)", String(existing.sprint_minutes_per_day || 2));
+  if (sprintMinutesRaw === null) {
+    return;
+  }
 
   const startCash = Number(startCashRaw);
   const durationDays = Number(durationRaw);
-  if (!Number.isFinite(startCash) || !Number.isFinite(durationDays)) {
-    appAlert("Start cash and duration must be numeric.");
+  const sprintMinutesPerDay = Number(sprintMinutesRaw);
+  if (!Number.isFinite(startCash) || !Number.isFinite(durationDays) || !Number.isFinite(sprintMinutesPerDay)) {
+    appAlert("Start cash, duration, and sprint minutes must be numeric.");
+    return;
+  }
+  if (sprintMinutesPerDay < 1 || sprintMinutesPerDay > 10) {
+    appAlert("Sprint minutes/day must be between 1 and 10.");
     return;
   }
 
@@ -1146,6 +1163,7 @@ async function editAssignment(assignmentCode) {
         city: city.trim(),
         start_cash: startCash,
         duration_days: Math.round(durationDays),
+        sprint_minutes_per_day: Math.round(sprintMinutesPerDay),
       }),
     });
     await loadClassAndAssignments(apiBase, teacherKey);
