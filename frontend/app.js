@@ -35,6 +35,8 @@ const classAssignmentSelect = document.getElementById("classAssignmentSelect");
 const assignmentJoinHint = document.getElementById("assignmentJoinHint");
 const authEmailInput = document.getElementById("authEmail");
 const authPasswordInput = document.getElementById("authPassword");
+const authConfirmPasswordInput = document.getElementById("authConfirmPassword");
+const authStudentSignupKeyInput = document.getElementById("authStudentSignupKey");
 const authSignInBtn = document.getElementById("authSignInBtn");
 const authSignUpBtn = document.getElementById("authSignUpBtn");
 const authForgotBtn = document.getElementById("authForgotBtn");
@@ -55,6 +57,7 @@ const confirmModalBackdrop = confirmModalEl?.querySelector("[data-close-confirm]
 const confirmModalCardEl = confirmModalEl?.querySelector(".confirm-modal__card");
 const nativeAlert = window.alert.bind(window);
 let toastStackEl = null;
+const configuredStudentSignupKey = (window.__APP_CONFIG__?.STUDENT_SIGNUP_KEY || "").trim();
 
 let loadedClassCode = "";
 let loadedAssignments = [];
@@ -823,9 +826,35 @@ if (authSignUpBtn) {
   authSignUpBtn.addEventListener("click", () => {
     const email = (authEmailInput?.value || "").trim();
     const password = (authPasswordInput?.value || "").trim();
+    const confirmPassword = (authConfirmPasswordInput?.value || "").trim();
+    const enteredStudentSignupKey = (authStudentSignupKeyInput?.value || "").trim();
+
+    if (!confirmPassword) {
+      appAlert("Confirm password is required for sign up.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      appAlert("Password and confirm password must match.");
+      return;
+    }
+    if (!enteredStudentSignupKey) {
+      appAlert("Student sign up key is required for sign up.");
+      return;
+    }
+    if (!configuredStudentSignupKey) {
+      appAlert("Student sign up key is not configured in app settings.");
+      return;
+    }
+    if (enteredStudentSignupKey !== configuredStudentSignupKey) {
+      appAlert("Invalid student sign up key.");
+      return;
+    }
+
     window.FinanceAuth?.signUp?.(email, password)
       .then(() => {
         updateAuthStatus();
+        if (authConfirmPasswordInput) authConfirmPasswordInput.value = "";
+        if (authStudentSignupKeyInput) authStudentSignupKeyInput.value = "";
         appAlert("Account created and signed in.", "Success", "success");
       })
       .catch((err) => appAlert(err.message || "Sign up failed"));
