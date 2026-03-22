@@ -87,7 +87,9 @@ app = FastAPI(title="Hustle & Home API", version="0.3.0")
 engine = FinanceGameEngine()
 strategy_engine = StrategyAssignmentEngine()
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://127.0.0.1:4173,http://localhost:4173").split(",")
+_allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://127.0.0.1:4173,http://localhost:4173").split(",")
+ALLOWED_ORIGINS = [origin.strip().rstrip("/") for origin in _allowed_origins_raw if origin.strip()]
+ALLOWED_ORIGIN_REGEX = os.getenv("ALLOWED_ORIGIN_REGEX", "").strip() or None
 TEACHER_API_KEY = os.getenv("TEACHER_API_KEY", "")
 USE_FIREBASE_AUTH = os.getenv("USE_FIREBASE_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "").strip()
@@ -110,7 +112,8 @@ if USE_FIREBASE_AUTH:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
