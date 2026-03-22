@@ -1,6 +1,7 @@
 const loadBtn = document.getElementById("loadBtn");
 const createClassBtn = document.getElementById("createClassBtn");
 const createAssignmentBtn = document.getElementById("createAssignmentBtn");
+const loadClassStudentsBtn = document.getElementById("loadClassStudentsBtn");
 const loadRubricBtn = document.getElementById("loadRubricBtn");
 const exportSessionsCsvBtn = document.getElementById("exportSessionsCsvBtn");
 const exportLogsCsvBtn = document.getElementById("exportLogsCsvBtn");
@@ -21,6 +22,7 @@ const sessionsEl = document.getElementById("sessions");
 const logsEl = document.getElementById("logs");
 const classListEl = document.getElementById("classList");
 const assignmentListEl = document.getElementById("assignmentList");
+const classStudentsListEl = document.getElementById("classStudentsList");
 const rubricListEl = document.getElementById("rubricList");
 const strategyLeaderboardEl = document.getElementById("strategyLeaderboard");
 const strategySessionReviewEl = document.getElementById("strategySessionReview");
@@ -41,6 +43,7 @@ const assignTitleInput = document.getElementById("assignTitleInput");
 const assignCityInput = document.getElementById("assignCityInput");
 const assignStartCashInput = document.getElementById("assignStartCashInput");
 const assignDurationInput = document.getElementById("assignDurationInput");
+const classStudentsClassCodeInput = document.getElementById("classStudentsClassCodeInput");
 const rubricAssignmentCodeInput = document.getElementById("rubricAssignmentCodeInput");
 const filterPlayerNameInput = document.getElementById("filterPlayerName");
 const filterClassCodeInput = document.getElementById("filterClassCode");
@@ -80,10 +83,207 @@ function getAccess(requireKey = true) {
   const apiBase = apiBaseInput.value.trim();
   const teacherKey = teacherKeyInput.value.trim();
   if (requireKey && !teacherKey) {
-    alert("Teacher key is required");
+    appAlert("Teacher key is required");
     return null;
   }
   return { apiBase, teacherKey };
+}
+
+const confirmModalEl = document.getElementById("confirmModal");
+const confirmModalTitleEl = document.getElementById("confirmModalTitle");
+const confirmModalMessageEl = document.getElementById("confirmModalMessage");
+const confirmModalCancelBtn = document.getElementById("confirmModalCancel");
+const confirmModalAcceptBtn = document.getElementById("confirmModalAccept");
+const confirmModalBackdrop = confirmModalEl?.querySelector("[data-close-confirm]");
+const confirmModalCardEl = confirmModalEl?.querySelector(".confirm-modal__card");
+const nativeAlert = window.alert.bind(window);
+let toastStackEl = null;
+
+function detectAlertType(message, explicitType) {
+  if (explicitType) {
+    return explicitType;
+  }
+  const text = String(message || "").toLowerCase();
+  if (text.includes("failed") || text.includes("error") || text.includes("invalid")) {
+    return "error";
+  }
+  if (text.includes("required") || text.includes("select") || text.includes("enter")) {
+    return "warning";
+  }
+  if (text.includes("created") || text.includes("saved") || text.includes("joined") || text.includes("copied")) {
+    return "success";
+  }
+  return "info";
+}
+
+function normalizeAlertMessage(message, type) {
+  const raw = String(message || "").trim();
+  if (!raw) {
+    return type === "error" ? "Action failed. Reason: Unknown error." : "Done.";
+  }
+  if (type === "error") {
+    return raw.startsWith("Action failed. Reason:") ? raw : `Action failed. Reason: ${raw}`;
+  }
+  if (type === "warning") {
+    return raw.endsWith(".") ? raw : `${raw}.`;
+  }
+  if (type === "success") {
+    return raw.endsWith(".") ? raw : `${raw}.`;
+  }
+  return raw;
+}
+
+function applyModalType(type) {
+  if (!confirmModalCardEl) {
+    return;
+  }
+  confirmModalCardEl.classList.remove("is-success", "is-warning", "is-error");
+  if (type === "success") {
+    confirmModalCardEl.classList.add("is-success");
+  } else if (type === "warning") {
+    confirmModalCardEl.classList.add("is-warning");
+  } else if (type === "error") {
+    confirmModalCardEl.classList.add("is-error");
+  }
+}
+
+function ensureToastStack() {
+  if (toastStackEl) {
+    return toastStackEl;
+  }
+  const existing = document.querySelector(".toast-stack");
+  if (existing) {
+    toastStackEl = existing;
+    return toastStackEl;
+  }
+  const stack = document.createElement("div");
+  stack.className = "toast-stack";
+  document.body.appendChild(stack);
+  toastStackEl = stack;
+  return toastStackEl;
+}
+
+function showToast(message, type = "info") {
+  const stack = ensureToastStack();
+  const toast = document.createElement("article");
+  toast.className = `toast ${type === "success" ? "toast-success" : "toast-info"}`;
+  toast.textContent = message;
+  stack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, 2600);
+}
+
+function appAlert(message, title = "Notice", type = "") {
+  if (!confirmModalEl || !confirmModalTitleEl || !confirmModalMessageEl || !confirmModalCancelBtn || !confirmModalAcceptBtn) {
+    nativeAlert(message);
+    return;
+  }
+
+  const resolvedType = detectAlertType(message, type);
+  const resolvedTitle =
+    title === "Notice"
+      ? resolvedType === "success"
+        ? "Success"
+        : resolvedType === "warning"
+          ? "Check Input"
+          : resolvedType === "error"
+            ? "Operation Failed"
+            : "Notice"
+      : title;
+  const titlePrefix = resolvedType === "success" ? "[OK] " : resolvedType === "warning" ? "[!] " : resolvedType === "error" ? "[ERR] " : "";
+  const normalized = normalizeAlertMessage(message, resolvedType);
+  if (resolvedType === "success" || resolvedType === "info") {
+    showToast(normalized, resolvedType);
+    return;
+  }
+  applyModalType(resolvedType);
+  confirmModalTitleEl.textContent = `${titlePrefix}${resolvedTitle}`;
+  confirmModalMessageEl.textContent = normalized;
+  confirmModalAcceptBtn.textContent = "OK";
+  confirmModalCancelBtn.style.display = "none";
+  confirmModalAcceptBtn.classList.remove("danger", "warn");
+  confirmModalAcceptBtn.classList.add("secondary");
+  confirmModalEl.hidden = false;
+  document.body.style.overflow = "hidden";
+
+  const cleanup = () => {
+    confirmModalEl.hidden = true;
+    document.body.style.overflow = "";
+    applyModalType("info");
+    confirmModalCancelBtn.style.display = "";
+    confirmModalAcceptBtn.classList.remove("secondary");
+    confirmModalAcceptBtn.classList.add("warn");
+    confirmModalAcceptBtn.removeEventListener("click", onClose);
+    confirmModalBackdrop?.removeEventListener("click", onClose);
+    document.removeEventListener("keydown", onKeyDown);
+  };
+  const onClose = () => cleanup();
+  const onKeyDown = (event) => {
+    if (event.key === "Escape" || event.key === "Enter") {
+      cleanup();
+    }
+  };
+
+  confirmModalAcceptBtn.addEventListener("click", onClose);
+  confirmModalBackdrop?.addEventListener("click", onClose);
+  document.addEventListener("keydown", onKeyDown);
+  confirmModalAcceptBtn.focus();
+}
+
+function showConfirmDialog({
+  title = "Please Confirm",
+  message = "Are you sure?",
+  confirmText = "Confirm",
+  cancelText = "Cancel",
+  danger = false,
+} = {}) {
+  if (!confirmModalEl || !confirmModalTitleEl || !confirmModalMessageEl || !confirmModalCancelBtn || !confirmModalAcceptBtn) {
+    return Promise.resolve(confirm(message));
+  }
+
+  applyModalType(danger ? "warning" : "info");
+  confirmModalTitleEl.textContent = title;
+  confirmModalMessageEl.textContent = message;
+  confirmModalAcceptBtn.textContent = confirmText;
+  confirmModalCancelBtn.textContent = cancelText;
+  confirmModalAcceptBtn.classList.toggle("danger", danger);
+  confirmModalAcceptBtn.classList.toggle("warn", !danger);
+  confirmModalEl.hidden = false;
+  document.body.style.overflow = "hidden";
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      confirmModalEl.hidden = true;
+      document.body.style.overflow = "";
+      applyModalType("info");
+      confirmModalAcceptBtn.removeEventListener("click", onAccept);
+      confirmModalCancelBtn.removeEventListener("click", onCancel);
+      confirmModalBackdrop?.removeEventListener("click", onCancel);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+    const onAccept = () => {
+      cleanup();
+      resolve(true);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onCancel();
+      } else if (event.key === "Enter") {
+        onAccept();
+      }
+    };
+
+    confirmModalAcceptBtn.addEventListener("click", onAccept);
+    confirmModalCancelBtn.addEventListener("click", onCancel);
+    confirmModalBackdrop?.addEventListener("click", onCancel);
+    document.addEventListener("keydown", onKeyDown);
+    confirmModalCancelBtn.focus();
+  });
 }
 
 function renderOverview(overview) {
@@ -158,6 +358,31 @@ function renderAssignments(assignments) {
   }
 }
 
+function renderClassStudents(classCode, rows) {
+  if (!classStudentsListEl) {
+    return;
+  }
+  classStudentsListEl.innerHTML = "";
+  if (!rows.length) {
+    classStudentsListEl.innerHTML = '<article class="log-item">No students joined this class yet.</article>';
+    return;
+  }
+
+  for (const row of rows) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    card.innerHTML = `
+      <strong>${row.display_name}</strong>
+      <p class="meta">Student ID: ${row.student_id}</p>
+      <p class="meta">Joined: ${new Date(row.joined_at).toLocaleString()}</p>
+      <div class="actions-row">
+        <button data-action="remove-class-student" data-class-code="${classCode}" data-student-id="${row.student_id}" class="danger">Remove Student</button>
+      </div>
+    `;
+    classStudentsListEl.appendChild(card);
+  }
+}
+
 function renderSessions(sessions) {
   currentSessions = sessions;
   sessionsEl.innerHTML = "";
@@ -180,6 +405,7 @@ function renderSessions(sessions) {
       <div class="actions-row">
         <label class="inline-check"><input type="checkbox" data-action="select-session" data-session-id="${row.session_id}" ${selectedSessionIds.has(row.session_id) ? "checked" : ""} /> Select</label>
         <button data-action="view-logs" data-session-id="${row.session_id}">View Day Logs</button>
+        ${row.class_code ? `<button data-action="remove-from-class" data-session-id="${row.session_id}" class="warn">Remove From Class</button>` : ""}
         <button data-action="edit-session" data-session-id="${row.session_id}" class="warn">Edit Session</button>
         <button data-action="delete-session" data-session-id="${row.session_id}" class="danger">Delete Session</button>
       </div>
@@ -443,9 +669,9 @@ function persistAccess(apiBase, teacherKey) {
 async function copyText(value) {
   try {
     await navigator.clipboard.writeText(value);
-    alert(`Copied: ${value}`);
+    appAlert(`Copied: ${value}`);
   } catch (_err) {
-    alert("Clipboard permission blocked. Copy manually.");
+    appAlert("Clipboard permission blocked. Copy manually.");
   }
 }
 
@@ -457,6 +683,25 @@ async function loadClassAndAssignments(apiBase, teacherKey) {
 
   renderClasses(classes);
   renderAssignments(assignments);
+}
+
+async function loadClassStudents() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const classCode = (classStudentsClassCodeInput?.value || "").trim().toUpperCase();
+  if (!classCode) {
+    appAlert("Class code is required");
+    return;
+  }
+  try {
+    const rows = await fetchJson(`${apiBase}/api/teacher/classes/${classCode}/students`, teacherKey);
+    renderClassStudents(classCode, rows);
+  } catch (err) {
+    appAlert(err.message || "Failed to load class students");
+  }
 }
 
 async function loadDashboard() {
@@ -485,7 +730,7 @@ async function loadDashboard() {
     renderStrategySessionReview(null);
     logsEl.innerHTML = "";
   } catch (err) {
-    alert(err.message || "Failed to load dashboard");
+    appAlert(err.message || "Failed to load dashboard");
   }
 }
 
@@ -494,7 +739,7 @@ async function loadSessionLogs(apiBase, teacherKey, sessionId) {
     const logs = await fetchJson(`${apiBase}/api/teacher/sessions/${sessionId}/logs?limit=90`, teacherKey);
     renderLogs(logs);
   } catch (err) {
-    alert(err.message || "Failed to load session logs");
+    appAlert(err.message || "Failed to load session logs");
   }
 }
 
@@ -507,7 +752,7 @@ async function loadAssignmentRubric() {
   const assignmentCode = rubricAssignmentCodeInput.value.trim().toUpperCase();
 
   if (!assignmentCode) {
-    alert("Assignment code is required");
+    appAlert("Assignment code is required");
     return;
   }
 
@@ -515,7 +760,7 @@ async function loadAssignmentRubric() {
     const rows = await fetchJson(`${apiBase}/api/teacher/assignments/${assignmentCode}/rubric?limit=300`, teacherKey);
     renderRubric(rows);
   } catch (err) {
-    alert(err.message || "Failed to load rubric");
+    appAlert(err.message || "Failed to load rubric");
   }
 }
 
@@ -588,7 +833,7 @@ async function loadRiskAlerts() {
     renderRiskAlerts(items);
   } catch (err) {
     console.error(err);
-    alert(err.message || "Failed to load risk alerts");
+    appAlert(err.message || "Failed to load risk alerts");
   }
 }
 
@@ -621,7 +866,7 @@ async function loadAuditLog() {
     renderAuditLog(items);
   } catch (err) {
     console.error(err);
-    alert(err.message || "Failed to load audit log");
+    appAlert(err.message || "Failed to load audit log");
   }
 }
 
@@ -637,7 +882,7 @@ async function loadStrategySessionReview(sessionId) {
     selectedStrategySessionId = sessionId;
     renderStrategySessionReview(review);
   } catch (err) {
-    alert(err.message || "Failed to load strategy session review");
+    appAlert(err.message || "Failed to load strategy session review");
   }
 }
 
@@ -667,7 +912,7 @@ function downloadCsv(filename, headers, rows) {
 
 function exportSessionsCsv() {
   if (!currentSessions.length) {
-    alert("Load dashboard first to export sessions.");
+    appAlert("Load dashboard first to export sessions.");
     return;
   }
   downloadCsv(
@@ -690,7 +935,7 @@ function exportSessionsCsv() {
 
 function exportLogsCsv() {
   if (!currentSelectedLogs.length) {
-    alert("Select a session and load day logs first.");
+    appAlert("Select a session and load day logs first.");
     return;
   }
   downloadCsv(
@@ -733,7 +978,7 @@ async function createClassroom() {
   const className = classNameInput.value.trim();
 
   if (!className) {
-    alert("Class name is required");
+    appAlert("Class name is required");
     return;
   }
 
@@ -749,9 +994,9 @@ async function createClassroom() {
     classNameInput.value = "";
     assignClassCodeInput.value = cls.class_code;
     await loadClassAndAssignments(apiBase, teacherKey);
-    alert(`Class created. Code: ${cls.class_code}`);
+    appAlert(`Class created. Code: ${cls.class_code}`);
   } catch (err) {
-    alert(err.message || "Failed to create class");
+    appAlert(err.message || "Failed to create class");
   }
 }
 
@@ -769,7 +1014,7 @@ async function createAssignment() {
   const durationDays = Number(assignDurationInput.value || 30);
 
   if (!classCode || !title) {
-    alert("Class code and assignment title are required");
+    appAlert("Class code and assignment title are required");
     return;
   }
 
@@ -790,9 +1035,9 @@ async function createAssignment() {
 
     assignTitleInput.value = "";
     await loadClassAndAssignments(apiBase, teacherKey);
-    alert(`Assignment created. Code: ${assignment.assignment_code}`);
+    appAlert(`Assignment created. Code: ${assignment.assignment_code}`);
   } catch (err) {
-    alert(err.message || "Failed to create assignment");
+    appAlert(err.message || "Failed to create assignment");
   }
 }
 
@@ -809,7 +1054,7 @@ async function updateClassroom(classCode) {
   }
   const clean = nextName.trim();
   if (!clean) {
-    alert("Class name cannot be empty.");
+    appAlert("Class name cannot be empty.");
     return;
   }
 
@@ -821,7 +1066,7 @@ async function updateClassroom(classCode) {
     });
     await loadClassAndAssignments(apiBase, teacherKey);
   } catch (err) {
-    alert(err.message || "Failed to update class");
+    appAlert(err.message || "Failed to update class");
   }
 }
 
@@ -832,7 +1077,12 @@ async function deleteClassroom(classCode) {
   }
   const { apiBase, teacherKey } = access;
 
-  const ok = confirm(`Delete class ${classCode}? This also deletes related assignments and enrollments.`);
+  const ok = await showConfirmDialog({
+    title: "Delete Class",
+    message: `Delete class ${classCode}? This also deletes related assignments and enrollments.`,
+    confirmText: "Delete",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -842,7 +1092,7 @@ async function deleteClassroom(classCode) {
     await loadClassAndAssignments(apiBase, teacherKey);
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to delete class");
+    appAlert(err.message || "Failed to delete class");
   }
 }
 
@@ -854,7 +1104,7 @@ async function editAssignment(assignmentCode) {
   const { apiBase, teacherKey } = access;
   const existing = currentAssignments.find((row) => row.assignment_code === assignmentCode);
   if (!existing) {
-    alert("Assignment not found in current list.");
+    appAlert("Assignment not found in current list.");
     return;
   }
 
@@ -878,7 +1128,7 @@ async function editAssignment(assignmentCode) {
   const startCash = Number(startCashRaw);
   const durationDays = Number(durationRaw);
   if (!Number.isFinite(startCash) || !Number.isFinite(durationDays)) {
-    alert("Start cash and duration must be numeric.");
+    appAlert("Start cash and duration must be numeric.");
     return;
   }
 
@@ -895,7 +1145,7 @@ async function editAssignment(assignmentCode) {
     });
     await loadClassAndAssignments(apiBase, teacherKey);
   } catch (err) {
-    alert(err.message || "Failed to update assignment");
+    appAlert(err.message || "Failed to update assignment");
   }
 }
 
@@ -914,7 +1164,7 @@ async function toggleAssignment(assignmentCode, currentActive) {
     });
     await loadClassAndAssignments(apiBase, teacherKey);
   } catch (err) {
-    alert(err.message || "Failed to toggle assignment status");
+    appAlert(err.message || "Failed to toggle assignment status");
   }
 }
 
@@ -925,7 +1175,12 @@ async function deleteAssignment(assignmentCode) {
   }
   const { apiBase, teacherKey } = access;
 
-  const ok = confirm(`Delete assignment ${assignmentCode}?`);
+  const ok = await showConfirmDialog({
+    title: "Delete Assignment",
+    message: `Delete assignment ${assignmentCode}?`,
+    confirmText: "Delete",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -935,7 +1190,7 @@ async function deleteAssignment(assignmentCode) {
     await loadClassAndAssignments(apiBase, teacherKey);
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to delete assignment");
+    appAlert(err.message || "Failed to delete assignment");
   }
 }
 
@@ -947,7 +1202,7 @@ async function editSession(sessionId) {
   const { apiBase, teacherKey } = access;
   const existing = currentSessions.find((row) => row.session_id === sessionId);
   if (!existing) {
-    alert("Session not found.");
+    appAlert("Session not found.");
     return;
   }
 
@@ -985,7 +1240,7 @@ async function editSession(sessionId) {
   const stress = Number(stressRaw);
   const score = Number(scoreRaw);
   if (![day, cash, stress, score].every(Number.isFinite)) {
-    alert("Day, cash, stress, and score must be numeric.");
+    appAlert("Day, cash, stress, and score must be numeric.");
     return;
   }
 
@@ -1005,7 +1260,7 @@ async function editSession(sessionId) {
     });
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to update session");
+    appAlert(err.message || "Failed to update session");
   }
 }
 
@@ -1016,7 +1271,12 @@ async function deleteSession(sessionId) {
   }
   const { apiBase, teacherKey } = access;
 
-  const ok = confirm(`Delete session ${sessionId}? This also removes daily logs.`);
+  const ok = await showConfirmDialog({
+    title: "Delete Session",
+    message: `Delete session ${sessionId}? This also removes daily logs.`,
+    confirmText: "Delete",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -1026,7 +1286,55 @@ async function deleteSession(sessionId) {
     logsEl.innerHTML = "";
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to delete session");
+    appAlert(err.message || "Failed to delete session");
+  }
+}
+
+async function removeSessionFromClass(sessionId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const ok = await showConfirmDialog({
+    title: "Remove Enrollment",
+    message: `Remove session ${sessionId} from class assignment enrollment?`,
+    confirmText: "Remove",
+  });
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/sessions/${sessionId}/enrollment`, teacherKey, {
+      method: "DELETE",
+    });
+    await loadDashboard();
+  } catch (err) {
+    appAlert(err.message || "Failed to remove session from class");
+  }
+}
+
+async function removeClassStudent(classCode, studentId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const ok = await showConfirmDialog({
+    title: "Remove Student",
+    message: `Remove student ${studentId} from class ${classCode}?`,
+    confirmText: "Remove",
+  });
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/classes/${classCode}/students/${studentId}`, teacherKey, {
+      method: "DELETE",
+    });
+    await loadClassStudents();
+  } catch (err) {
+    appAlert(err.message || "Failed to remove student from class");
   }
 }
 
@@ -1037,7 +1345,12 @@ async function deleteStrategySession(sessionId) {
   }
   const { apiBase, teacherKey } = access;
 
-  const ok = confirm(`Delete sprint session ${sessionId}? This removes all decision history for this sprint run.`);
+  const ok = await showConfirmDialog({
+    title: "Delete Sprint Session",
+    message: `Delete sprint session ${sessionId}? This removes all decision history for this sprint run.`,
+    confirmText: "Delete",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -1050,7 +1363,7 @@ async function deleteStrategySession(sessionId) {
     }
     await loadStrategyLeaderboard();
   } catch (err) {
-    alert(err.message || "Failed to delete sprint session");
+    appAlert(err.message || "Failed to delete sprint session");
   }
 }
 
@@ -1062,10 +1375,15 @@ async function bulkDeleteSessions() {
   const { apiBase, teacherKey } = access;
   const ids = Array.from(selectedSessionIds);
   if (!ids.length) {
-    alert("Select at least one session.");
+    appAlert("Select at least one session.");
     return;
   }
-  const ok = confirm(`Delete ${ids.length} selected sessions?`);
+  const ok = await showConfirmDialog({
+    title: "Bulk Delete Sessions",
+    message: `Delete ${ids.length} selected sessions?`,
+    confirmText: "Delete",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -1079,7 +1397,7 @@ async function bulkDeleteSessions() {
     logsEl.innerHTML = "";
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to bulk delete sessions");
+    appAlert(err.message || "Failed to bulk delete sessions");
   }
 }
 
@@ -1091,10 +1409,15 @@ async function bulkDeleteStrategySessions() {
   const { apiBase, teacherKey } = access;
   const ids = Array.from(selectedStrategyIds);
   if (!ids.length) {
-    alert("Select at least one sprint session.");
+    appAlert("Select at least one sprint session.");
     return;
   }
-  const ok = confirm(`Delete ${ids.length} selected sprint sessions?`);
+  const ok = await showConfirmDialog({
+    title: "Bulk Delete Sprint Sessions",
+    message: `Delete ${ids.length} selected sprint sessions?`,
+    confirmText: "Delete",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -1111,7 +1434,7 @@ async function bulkDeleteStrategySessions() {
     }
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to bulk delete sprint sessions");
+    appAlert(err.message || "Failed to bulk delete sprint sessions");
   }
 }
 
@@ -1127,7 +1450,7 @@ async function restoreTrashItem(trashId) {
     });
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to restore archived record");
+    appAlert(err.message || "Failed to restore archived record");
   }
 }
 
@@ -1139,10 +1462,15 @@ async function bulkRestoreTrashItems() {
   const { apiBase, teacherKey } = access;
   const ids = Array.from(selectedTrashIds);
   if (!ids.length) {
-    alert("Select at least one trash record.");
+    appAlert("Select at least one trash record.");
     return;
   }
-  const ok = confirm(`Restore ${ids.length} selected archived record(s)?`);
+  const ok = await showConfirmDialog({
+    title: "Restore Records",
+    message: `Restore ${ids.length} selected archived record(s)?`,
+    confirmText: "Restore",
+    danger: false,
+  });
   if (!ok) {
     return;
   }
@@ -1155,7 +1483,7 @@ async function bulkRestoreTrashItems() {
     selectedTrashIds.clear();
     await loadDashboard();
   } catch (err) {
-    alert(err.message || "Failed to bulk restore trash items");
+    appAlert(err.message || "Failed to bulk restore trash items");
   }
 }
 
@@ -1167,10 +1495,15 @@ async function purgeTrashItems() {
   const { apiBase, teacherKey } = access;
   const ids = Array.from(selectedTrashIds);
   if (!ids.length) {
-    alert("Select at least one trash record.");
+    appAlert("Select at least one trash record.");
     return;
   }
-  const ok = confirm(`Permanently delete ${ids.length} selected archived record(s)? This cannot be undone.`);
+  const ok = await showConfirmDialog({
+    title: "Permanent Delete",
+    message: `Permanently delete ${ids.length} selected archived record(s)? This cannot be undone.`,
+    confirmText: "Delete Forever",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -1183,7 +1516,7 @@ async function purgeTrashItems() {
     selectedTrashIds.clear();
     await loadTrash();
   } catch (err) {
-    alert(err.message || "Failed to purge trash items");
+    appAlert(err.message || "Failed to purge trash items");
   }
 }
 
@@ -1195,11 +1528,16 @@ async function purgeOlderTrashItems() {
   const { apiBase, teacherKey } = access;
   const days = Number(trashPurgeOlderDays?.value || 0);
   if (!Number.isFinite(days) || days < 1) {
-    alert("Enter a valid number of days (>=1).");
+    appAlert("Enter a valid number of days (>=1).");
     return;
   }
   const safeDays = Math.round(days);
-  const ok = confirm(`Permanently delete trash records older than ${safeDays} days?`);
+  const ok = await showConfirmDialog({
+    title: "Purge Old Trash",
+    message: `Permanently delete trash records older than ${safeDays} days?`,
+    confirmText: "Purge",
+    danger: true,
+  });
   if (!ok) {
     return;
   }
@@ -1212,7 +1550,7 @@ async function purgeOlderTrashItems() {
     selectedTrashIds.clear();
     await loadTrash();
   } catch (err) {
-    alert(err.message || "Failed to purge old trash records");
+    appAlert(err.message || "Failed to purge old trash records");
   }
 }
 
@@ -1231,28 +1569,37 @@ function restoreAccessFields() {
 loadBtn.addEventListener("click", () => {
   loadDashboard().catch((err) => {
     console.error(err);
-    alert("Unexpected error while loading dashboard");
+    appAlert("Unexpected error while loading dashboard");
   });
 });
 
 createClassBtn.addEventListener("click", () => {
   createClassroom().catch((err) => {
     console.error(err);
-    alert("Unexpected error while creating class");
+    appAlert("Unexpected error while creating class");
   });
 });
 
 createAssignmentBtn.addEventListener("click", () => {
   createAssignment().catch((err) => {
     console.error(err);
-    alert("Unexpected error while creating assignment");
+    appAlert("Unexpected error while creating assignment");
   });
 });
+
+if (loadClassStudentsBtn) {
+  loadClassStudentsBtn.addEventListener("click", () => {
+    loadClassStudents().catch((err) => {
+      console.error(err);
+      appAlert("Unexpected error while loading class students");
+    });
+  });
+}
 
 loadRubricBtn.addEventListener("click", () => {
   loadAssignmentRubric().catch((err) => {
     console.error(err);
-    alert("Unexpected error while loading rubric");
+    appAlert("Unexpected error while loading rubric");
   });
 });
 
@@ -1260,7 +1607,7 @@ if (loadStrategyLeaderboardBtn) {
   loadStrategyLeaderboardBtn.addEventListener("click", () => {
     loadStrategyLeaderboard().catch((err) => {
       console.error(err);
-      alert("Unexpected error while loading strategy leaderboard");
+      appAlert("Unexpected error while loading strategy leaderboard");
     });
   });
 }
@@ -1340,6 +1687,9 @@ classListEl.addEventListener("click", (event) => {
   }
   if (action === "use-class" && classCode) {
     assignClassCodeInput.value = classCode;
+    if (classStudentsClassCodeInput) {
+      classStudentsClassCodeInput.value = classCode;
+    }
     return;
   }
   if (action === "edit-class" && classCode) {
@@ -1350,6 +1700,26 @@ classListEl.addEventListener("click", (event) => {
     deleteClassroom(classCode).catch(() => {});
   }
 });
+
+if (classStudentsListEl) {
+  classStudentsListEl.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const action = target.getAttribute("data-action");
+    if (action !== "remove-class-student") {
+      return;
+    }
+    const classCode = target.getAttribute("data-class-code");
+    const studentId = target.getAttribute("data-student-id");
+    if (!classCode || !studentId) {
+      return;
+    }
+    removeClassStudent(classCode, studentId).catch(() => {});
+  });
+}
 
 assignmentListEl.addEventListener("click", (event) => {
   const target = event.target;
@@ -1397,6 +1767,10 @@ sessionsEl.addEventListener("click", (event) => {
 
   if (action === "view-logs") {
     loadSessionLogs(access.apiBase, access.teacherKey, sessionId).catch(() => {});
+    return;
+  }
+  if (action === "remove-from-class") {
+    removeSessionFromClass(sessionId).catch(() => {});
     return;
   }
   if (action === "edit-session") {

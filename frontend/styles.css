@@ -277,6 +277,124 @@ button.danger {
   line-height: 1.4;
 }
 
+.confirm-modal[hidden] {
+  display: none;
+}
+
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+}
+
+.confirm-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 29, 44, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.confirm-modal__card {
+  position: relative;
+  width: min(92vw, 520px);
+  background: linear-gradient(150deg, #f9fcff 0%, #fff9eb 50%, #f3fbf5 100%);
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(15, 76, 129, 0.3);
+  padding: 18px 18px 14px;
+}
+
+.confirm-modal__card.is-success {
+  border-color: #9fd8a4;
+  box-shadow: 0 20px 50px rgba(31, 106, 52, 0.28);
+}
+
+.confirm-modal__card.is-warning {
+  border-color: #f1cf75;
+  box-shadow: 0 20px 50px rgba(180, 123, 0, 0.28);
+}
+
+.confirm-modal__card.is-error {
+  border-color: #ef9a9a;
+  box-shadow: 0 20px 50px rgba(156, 27, 27, 0.3);
+}
+
+.confirm-modal__title {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+  color: #0f4c81;
+}
+
+.confirm-modal__card.is-success .confirm-modal__title {
+  color: #1f6a34;
+}
+
+.confirm-modal__card.is-warning .confirm-modal__title {
+  color: #8f5a00;
+}
+
+.confirm-modal__card.is-error .confirm-modal__title {
+  color: #9b1c1c;
+}
+
+.confirm-modal__message {
+  margin: 0;
+  color: #223c50;
+  line-height: 1.5;
+}
+
+.confirm-modal__actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2200;
+  display: grid;
+  gap: 8px;
+  width: min(92vw, 360px);
+}
+
+.toast {
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: #183245;
+  padding: 10px 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  animation: toast-in 180ms ease-out;
+}
+
+.toast.toast-success {
+  border-color: #9fd8a4;
+  background: #f2fcf3;
+  color: #1f6a34;
+}
+
+.toast.toast-info {
+  border-color: #9cc4e3;
+  background: #f2f8ff;
+  color: #0f4c81;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 760px) {
   .grid.two,
   .grid.three,

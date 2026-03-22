@@ -26,6 +26,46 @@
       </section>
 
       <section class="panel">
+        <h2>How This Page Works</h2>
+        <div class="log">
+          <article class="log-item">
+            <strong>1) Start Game</strong>
+            <p class="meta">Use this for free play. You enter name/city and start an independent 30-day simulation.</p>
+          </article>
+          <article class="log-item">
+            <strong>2) Join Class Assignment</strong>
+            <p class="meta">Use class code to load only that class's active assignments. Choose one assignment and start from teacher settings.</p>
+          </article>
+          <article class="log-item">
+            <strong>3) Game State -> Daily Allocation -> Daily Log -> Weekly Report</strong>
+            <p class="meta">State shows current financial position, Allocation is your daily plan, Log records day-by-day outcomes, Weekly Report summarizes each 7-day block.</p>
+          </article>
+          <article class="log-item">
+            <strong>4) Sprint Area</strong>
+            <p class="meta">A separate 1-hour challenge. You choose one offer per simulated day and get a final performance score vs hidden optimal path.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Student Profile (Required for Classwork)</h2>
+        <div class="grid three">
+          <label>
+            Student Display Name
+            <input id="studentDisplayName" value="Student" />
+          </label>
+          <label>
+            Student ID
+            <input id="studentIdReadOnly" placeholder="Create profile to get ID" readonly />
+          </label>
+          <div>
+            <button id="registerStudentBtn" class="btn-no-margin">Create / Load Profile</button>
+          </div>
+        </div>
+        <p class="meta">Your Student ID is used to secure class membership and assignment visibility.</p>
+      </section>
+
+      <section class="panel">
         <h2>Start Game</h2>
         <div class="grid two">
           <label>
@@ -37,21 +77,46 @@
             <input id="city" value="Charlotte, NC" />
           </label>
         </div>
-        <div class="grid two mt-sm">
+        <p class="meta">Free play mode starts with your own city and budget settings.</p>
+        <button id="startBtn">Start Free Play Game</button>
+      </section>
+
+      <section class="panel">
+        <h2>Join Class Assignment</h2>
+        <div class="grid three">
           <label>
-            Class Code (optional)
-            <input id="classCode" placeholder="e.g., A1B2C3" />
+            Student Name
+            <input id="classPlayerName" value="Student" />
           </label>
           <label>
-            Assignment Code (optional)
-            <input id="assignmentCode" placeholder="e.g., X7Y8Z9Q" />
+            Class Code
+            <input id="classCode" placeholder="e.g., A1B2C3" />
+          </label>
+          <div>
+            <button id="joinClassBtn" class="btn-no-margin">Join Class</button>
+          </div>
+        </div>
+        <div class="actions-row mt-sm">
+          <button id="loadMyClassesBtn" class="secondary btn-no-margin">Load My Classes</button>
+          <button id="loadClassAssignmentsBtn" class="secondary btn-no-margin">Load Class Assignments</button>
+        </div>
+        <div id="myClasses" class="log mt-sm"></div>
+        <div class="grid two mt-sm">
+          <label>
+            Class Name
+            <input id="classNameReadOnly" placeholder="Loads after class code" readonly />
+          </label>
+          <label>
+            Active Assignment
+            <select id="classAssignmentSelect">
+              <option value="">Load class to select assignment</option>
+            </select>
           </label>
         </div>
         <p id="assignmentJoinHint" class="meta">
-          If class and assignment codes are provided, the student joins that assignment and city is locked by the
-          teacher setup.
+          You only see assignments that belong to your class code and are currently active.
         </p>
-        <button id="startBtn">Start New Game</button>
+        <button id="joinClassAssignmentBtn">Join Class and Start Assignment</button>
       </section>
 
       <section class="panel" id="statePanel">
@@ -158,6 +223,18 @@
         <div id="sprintFinalResult" class="log"></div>
       </section>
     </main>
+
+    <div id="confirmModal" class="confirm-modal" hidden>
+      <div class="confirm-modal__backdrop" data-close-confirm></div>
+      <section class="confirm-modal__card" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+        <h3 id="confirmModalTitle" class="confirm-modal__title">Please Confirm</h3>
+        <p id="confirmModalMessage" class="confirm-modal__message"></p>
+        <div class="confirm-modal__actions">
+          <button id="confirmModalCancel" class="secondary btn-no-margin">Cancel</button>
+          <button id="confirmModalAccept" class="warn btn-no-margin">Confirm</button>
+        </div>
+      </section>
+    </div>
 
     <script src="./runtime-config.js"></script>
     <script src="./app.js"></script>

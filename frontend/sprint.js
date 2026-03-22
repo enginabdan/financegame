@@ -6,8 +6,149 @@ const progressStatsEl = document.getElementById("sprintProgressStats");
 const dayBriefEl = document.getElementById("sprintDayBrief");
 const decisionLogEl = document.getElementById("sprintDecisionLog");
 const finalResultEl = document.getElementById("sprintFinalResult");
+const confirmModalEl = document.getElementById("confirmModal");
+const confirmModalTitleEl = document.getElementById("confirmModalTitle");
+const confirmModalMessageEl = document.getElementById("confirmModalMessage");
+const confirmModalCancelBtn = document.getElementById("confirmModalCancel");
+const confirmModalAcceptBtn = document.getElementById("confirmModalAccept");
+const confirmModalBackdrop = confirmModalEl?.querySelector("[data-close-confirm]");
+const confirmModalCardEl = confirmModalEl?.querySelector(".confirm-modal__card");
+const nativeAlert = window.alert.bind(window);
+let toastStackEl = null;
 
 let sprintState = null;
+
+function detectAlertType(message, explicitType) {
+  if (explicitType) {
+    return explicitType;
+  }
+  const text = String(message || "").toLowerCase();
+  if (text.includes("failed") || text.includes("error") || text.includes("invalid")) {
+    return "error";
+  }
+  if (text.includes("required") || text.includes("select") || text.includes("enter")) {
+    return "warning";
+  }
+  if (text.includes("created") || text.includes("saved") || text.includes("joined")) {
+    return "success";
+  }
+  return "info";
+}
+
+function normalizeAlertMessage(message, type) {
+  const raw = String(message || "").trim();
+  if (!raw) {
+    return type === "error" ? "Action failed. Reason: Unknown error." : "Done.";
+  }
+  if (type === "error") {
+    return raw.startsWith("Action failed. Reason:") ? raw : `Action failed. Reason: ${raw}`;
+  }
+  if (type === "warning") {
+    return raw.endsWith(".") ? raw : `${raw}.`;
+  }
+  if (type === "success") {
+    return raw.endsWith(".") ? raw : `${raw}.`;
+  }
+  return raw;
+}
+
+function applyModalType(type) {
+  if (!confirmModalCardEl) {
+    return;
+  }
+  confirmModalCardEl.classList.remove("is-success", "is-warning", "is-error");
+  if (type === "success") {
+    confirmModalCardEl.classList.add("is-success");
+  } else if (type === "warning") {
+    confirmModalCardEl.classList.add("is-warning");
+  } else if (type === "error") {
+    confirmModalCardEl.classList.add("is-error");
+  }
+}
+
+function ensureToastStack() {
+  if (toastStackEl) {
+    return toastStackEl;
+  }
+  const existing = document.querySelector(".toast-stack");
+  if (existing) {
+    toastStackEl = existing;
+    return toastStackEl;
+  }
+  const stack = document.createElement("div");
+  stack.className = "toast-stack";
+  document.body.appendChild(stack);
+  toastStackEl = stack;
+  return toastStackEl;
+}
+
+function showToast(message, type = "info") {
+  const stack = ensureToastStack();
+  const toast = document.createElement("article");
+  toast.className = `toast ${type === "success" ? "toast-success" : "toast-info"}`;
+  toast.textContent = message;
+  stack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, 2600);
+}
+
+function appAlert(message, title = "Notice", type = "") {
+  if (!confirmModalEl || !confirmModalTitleEl || !confirmModalMessageEl || !confirmModalCancelBtn || !confirmModalAcceptBtn) {
+    nativeAlert(message);
+    return;
+  }
+
+  const resolvedType = detectAlertType(message, type);
+  const resolvedTitle =
+    title === "Notice"
+      ? resolvedType === "success"
+        ? "Success"
+        : resolvedType === "warning"
+          ? "Check Input"
+          : resolvedType === "error"
+            ? "Operation Failed"
+            : "Notice"
+      : title;
+  const titlePrefix = resolvedType === "success" ? "[OK] " : resolvedType === "warning" ? "[!] " : resolvedType === "error" ? "[ERR] " : "";
+  const normalized = normalizeAlertMessage(message, resolvedType);
+  if (resolvedType === "success" || resolvedType === "info") {
+    showToast(normalized, resolvedType);
+    return;
+  }
+  applyModalType(resolvedType);
+  confirmModalTitleEl.textContent = `${titlePrefix}${resolvedTitle}`;
+  confirmModalMessageEl.textContent = normalized;
+  confirmModalAcceptBtn.textContent = "OK";
+  confirmModalCancelBtn.style.display = "none";
+  confirmModalAcceptBtn.classList.remove("danger", "warn");
+  confirmModalAcceptBtn.classList.add("secondary");
+  confirmModalEl.hidden = false;
+  document.body.style.overflow = "hidden";
+
+  const cleanup = () => {
+    confirmModalEl.hidden = true;
+    document.body.style.overflow = "";
+    applyModalType("info");
+    confirmModalCancelBtn.style.display = "";
+    confirmModalAcceptBtn.classList.remove("secondary");
+    confirmModalAcceptBtn.classList.add("warn");
+    confirmModalAcceptBtn.removeEventListener("click", onClose);
+    confirmModalBackdrop?.removeEventListener("click", onClose);
+    document.removeEventListener("keydown", onKeyDown);
+  };
+  const onClose = () => cleanup();
+  const onKeyDown = (event) => {
+    if (event.key === "Escape" || event.key === "Enter") {
+      cleanup();
+    }
+  };
+
+  confirmModalAcceptBtn.addEventListener("click", onClose);
+  confirmModalBackdrop?.addEventListener("click", onClose);
+  document.addEventListener("keydown", onKeyDown);
+  confirmModalAcceptBtn.focus();
+}
 
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value || 0);
@@ -138,7 +279,7 @@ if (startBtn && offersEl && progressStatsEl && dayBriefEl && decisionLogEl && fi
   startBtn.addEventListener("click", () => {
     startSprint().catch((err) => {
       console.error(err);
-      alert(err.message || "Failed to start sprint");
+      appAlert(err.message || "Failed to start sprint");
     });
   });
 }
