@@ -54,6 +54,7 @@ class GameState(BaseModel):
     debt: float = 0.0
     stress: int = 20
     status: Literal["active", "completed", "failed"] = "active"
+    duration_days: int = 30
     class_code: Optional[str] = None
     assignment_code: Optional[str] = None
 
@@ -144,3 +145,56 @@ class TeacherDayLog(BaseModel):
     event_cash_impact: float
     end_cash: float
     created_at: datetime
+
+
+class StrategyStartRequest(BaseModel):
+    player_name: str = "Student"
+    total_days: int = Field(default=30, ge=7, le=45)
+    assignment_minutes: int = Field(default=60, ge=20, le=120)
+
+
+class StrategyOffer(BaseModel):
+    offer_id: str
+    title: str
+    text: str
+    channel: str
+    time_hours: float
+    miles: float
+    cash_in: float
+    cash_out: float
+    risk: Literal["low", "medium", "high"] = "medium"
+
+
+class StrategyPublicState(BaseModel):
+    session_id: str
+    player_name: str
+    current_day: int
+    total_days: int
+    assignment_minutes: int
+    status: Literal["active", "completed"] = "active"
+    total_profit: float
+    selected_count: int
+    offers: list[StrategyOffer] = Field(default_factory=list)
+    day_brief: str = ""
+
+
+class StrategyChooseRequest(BaseModel):
+    session_id: str
+    offer_id: str
+
+
+class StrategyChooseResponse(BaseModel):
+    state: StrategyPublicState
+    chosen_offer_title: str
+    chosen_profit: float
+    running_profit: float
+
+
+class StrategyResultResponse(BaseModel):
+    session_id: str
+    player_name: str
+    total_days: int
+    student_profit: float
+    optimal_profit: float
+    success_percentage: float
+    status: Literal["active", "completed"]

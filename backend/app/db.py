@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 
@@ -114,6 +114,48 @@ class GameDayLogModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     session: Mapped[GameSessionModel] = relationship(back_populates="day_logs")
+
+
+class StrategySessionModel(Base):
+    __tablename__ = "strategy_sessions"
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    player_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    current_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    total_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    assignment_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    total_profit: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    optimal_profit: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    selected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    current_offers_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    current_day_brief: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    decisions: Mapped[list["StrategyDecisionModel"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+
+
+class StrategyDecisionModel(Base):
+    __tablename__ = "strategy_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("strategy_sessions.session_id"), nullable=False, index=True)
+    day: Mapped[int] = mapped_column(Integer, nullable=False)
+    chosen_offer_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    chosen_offer_title: Mapped[str] = mapped_column(String(160), nullable=False)
+    chosen_profit: Mapped[float] = mapped_column(Float, nullable=False)
+    optimal_profit: Mapped[float] = mapped_column(Float, nullable=False)
+    offers_json: Mapped[str] = mapped_column(Text, nullable=False)
+    day_brief: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    session: Mapped[StrategySessionModel] = relationship(back_populates="decisions")
 
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}

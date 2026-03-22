@@ -21,7 +21,7 @@ function renderState(state, score = null) {
   stats.innerHTML = "";
 
   const cells = [
-    { label: "Day", value: `${state.day}/30`, className: "day" },
+    { label: "Day", value: `${state.day}/${state.duration_days || 30}`, className: "day" },
     { label: "Cash", value: money(state.cash), className: "cash" },
     { label: "Tax Reserve", value: money(state.tax_reserve), className: "day" },
     { label: "Debt", value: money(state.debt), className: "stress" },

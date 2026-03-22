@@ -69,6 +69,7 @@ python3 -m http.server 4173
 
 Student game: `http://127.0.0.1:4173`
 Teacher dashboard: `http://127.0.0.1:4173/teacher.html`
+1-hour assignment sprint: `http://127.0.0.1:4173/sprint.html`
 
 ## Environment Variables
 
@@ -88,6 +89,10 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 - `POST /api/new-game`
 - `POST /api/student/join-assignment`
 - `POST /api/advance-day`
+- `POST /api/strategy/start`
+- `POST /api/strategy/choose`
+- `GET /api/strategy/{session_id}`
+- `GET /api/strategy/{session_id}/result`
 - `POST /api/teacher/classes` (header: `x-teacher-key`)
 - `GET /api/teacher/classes` (header: `x-teacher-key`)
 - `POST /api/teacher/assignments` (header: `x-teacher-key`)

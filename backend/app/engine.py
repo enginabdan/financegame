@@ -98,7 +98,7 @@ class FinanceGameEngine:
 
         if state.cash < -400:
             state.status = "failed"
-        elif state.day >= 30:
+        elif state.day >= state.duration_days:
             state.status = "completed"
         else:
             state.day += 1
@@ -301,3 +301,191 @@ class FinanceGameEngine:
         if car_action == "replace":
             return 160.0
         return 0.0
+
+
+@dataclass
+class StrategyOfferInternal:
+    offer_id: str
+    title: str
+    text: str
+    channel: str
+    time_hours: float
+    miles: float
+    cash_in: float
+    cash_out: float
+    risk: str
+    expected_profit: float
+
+
+class StrategyAssignmentEngine:
+    def __init__(self) -> None:
+        self._rng = random.Random()
+        self._model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+        api_key = os.getenv("OPENAI_API_KEY")
+        self._client = OpenAI(api_key=api_key) if api_key else None
+
+    def build_day_offers(
+        self,
+        *,
+        day: int,
+        total_days: int,
+        running_profit: float,
+        previous_channels: list[str],
+    ) -> tuple[str, list[StrategyOfferInternal]]:
+        if self._client is not None:
+            ai = self._ai_day_offers(
+                day=day,
+                total_days=total_days,
+                running_profit=running_profit,
+                previous_channels=previous_channels,
+            )
+            if ai is not None:
+                return ai
+        return self._fallback_day_offers(day=day, total_days=total_days)
+
+    def _ai_day_offers(
+        self,
+        *,
+        day: int,
+        total_days: int,
+        running_profit: float,
+        previous_channels: list[str],
+    ) -> tuple[str, list[StrategyOfferInternal]] | None:
+        try:
+            prompt = {
+                "task": "Generate realistic same-day earning opportunities for a US gig worker and online seller.",
+                "constraints": {
+                    "count": 4,
+                    "must_include_possible_channels": [
+                        "Doordash",
+                        "Walmart Spark",
+                        "Amazon Delivery",
+                        "Amazon Seller",
+                        "Walmart Marketplace",
+                        "Shopify",
+                        "Etsy",
+                        "eBay",
+                        "Other",
+                    ],
+                    "offer_fields": [
+                        "offer_id",
+                        "title",
+                        "text",
+                        "channel",
+                        "time_hours",
+                        "miles",
+                        "cash_in",
+                        "cash_out",
+                        "risk",
+                        "expected_profit",
+                    ],
+                    "numbers": {
+                        "time_hours_min": 0.5,
+                        "time_hours_max": 6.0,
+                        "miles_min": 0,
+                        "miles_max": 140,
+                        "cash_in_min": 20,
+                        "cash_in_max": 450,
+                        "cash_out_min": 2,
+                        "cash_out_max": 220,
+                        "expected_profit_min": -30,
+                        "expected_profit_max": 260,
+                    },
+                    "return_json_only": True,
+                },
+                "context": {
+                    "day": day,
+                    "total_days": total_days,
+                    "running_profit": running_profit,
+                    "previous_channels": previous_channels[-6:],
+                },
+            }
+
+            response = self._client.responses.create(
+                model=self._model,
+                input=[
+                    {"role": "system", "content": "Return only valid JSON."},
+                    {"role": "user", "content": json.dumps(prompt)},
+                ],
+            )
+            raw = (response.output_text or "").strip()
+            data = json.loads(raw)
+            offers_raw = data.get("offers") or []
+            brief = str(data.get("day_brief", f"Day {day}: New opportunities arrived.")).strip()[:220]
+            offers = [self._sanitize_offer(item, idx) for idx, item in enumerate(offers_raw)]
+            offers = [o for o in offers if o is not None]
+            if len(offers) < 3:
+                return None
+            return brief, offers[:4]
+        except Exception:
+            return None
+
+    def _fallback_day_offers(self, *, day: int, total_days: int) -> tuple[str, list[StrategyOfferInternal]]:
+        channels = [
+            ("Doordash", "Peak dinner window with stacked deliveries."),
+            ("Walmart Spark", "Batch grocery run with moderate distance."),
+            ("Amazon Delivery", "Last-mile route with fixed block payout."),
+            ("Amazon Seller", "Restock + sponsored ad on winning SKU."),
+            ("Walmart Marketplace", "Price optimization on two active listings."),
+            ("Shopify", "Flash sale + email push to past customers."),
+            ("Etsy", "Trending handmade keyword listing update."),
+            ("eBay", "Auction flip with packaging and shipping cost."),
+            ("TikTok Shop", "Short-form promo with affiliate split."),
+            ("Local Wholesale", "Buy discounted pallet and relist online."),
+        ]
+        self._rng.shuffle(channels)
+        offers: list[StrategyOfferInternal] = []
+        for i, (channel, sentence) in enumerate(channels[:4], start=1):
+            time_hours = round(self._rng.uniform(1.0, 5.5), 1)
+            miles = round(self._rng.uniform(0, 120), 1 if self._rng.random() < 0.5 else 0)
+            cash_in = round(self._rng.uniform(45, 320), 2)
+            cash_out = round(self._rng.uniform(8, 170), 2)
+            risk = self._rng.choice(["low", "medium", "high"])
+            risk_penalty = {"low": 0.98, "medium": 0.9, "high": 0.78}[risk]
+            expected_profit = round((cash_in - cash_out - miles * 0.22) * risk_penalty, 2)
+            offers.append(
+                StrategyOfferInternal(
+                    offer_id=f"D{day}-{i}",
+                    title=f"{channel} Opportunity",
+                    text=sentence[:150],
+                    channel=channel,
+                    time_hours=time_hours,
+                    miles=float(miles),
+                    cash_in=cash_in,
+                    cash_out=cash_out,
+                    risk=risk,
+                    expected_profit=expected_profit,
+                )
+            )
+        brief = f"Day {day}/{total_days}: New demand and selling opportunities are available."
+        return brief, offers
+
+    def _sanitize_offer(self, item: dict, index: int) -> StrategyOfferInternal | None:
+        try:
+            offer_id = str(item.get("offer_id") or f"offer-{index+1}")[:24]
+            title = str(item.get("title") or "Opportunity")[:120]
+            text = str(item.get("text") or "A new earning option is available.")[:180]
+            channel = str(item.get("channel") or "Other")[:60]
+            time_hours = max(0.5, min(6.0, float(item.get("time_hours", 2.0))))
+            miles = max(0.0, min(200.0, float(item.get("miles", 0.0))))
+            cash_in = max(10.0, min(600.0, float(item.get("cash_in", 80.0))))
+            cash_out = max(0.0, min(300.0, float(item.get("cash_out", 20.0))))
+            risk = str(item.get("risk", "medium")).lower()
+            if risk not in {"low", "medium", "high"}:
+                risk = "medium"
+            expected_profit = float(item.get("expected_profit", cash_in - cash_out - miles * 0.2))
+            expected_profit = max(-50.0, min(320.0, expected_profit))
+            return StrategyOfferInternal(
+                offer_id=offer_id,
+                title=title,
+                text=text,
+                channel=channel,
+                time_hours=round(time_hours, 1),
+                miles=round(miles, 1),
+                cash_in=round(cash_in, 2),
+                cash_out=round(cash_out, 2),
+                risk=risk,
+                expected_profit=round(expected_profit, 2),
+            )
+        except Exception:
+            return None

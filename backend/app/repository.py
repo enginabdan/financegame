@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+import json
 import random
 import string
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from .db import AssignmentEnrollmentModel, AssignmentModel, ClassroomModel, GameDayLogModel, GameSessionModel
+from .db import (
+    AssignmentEnrollmentModel,
+    AssignmentModel,
+    ClassroomModel,
+    GameDayLogModel,
+    GameSessionModel,
+    StrategyDecisionModel,
+    StrategySessionModel,
+)
 from .schemas import (
     AssignmentRubricRow,
     AssignmentSummary,
@@ -16,6 +25,10 @@ from .schemas import (
     TeacherDayLog,
     TeacherOverviewResponse,
     TeacherSessionSummary,
+    StrategyChooseResponse,
+    StrategyOffer,
+    StrategyPublicState,
+    StrategyResultResponse,
 )
 
 
@@ -41,6 +54,14 @@ class GameRepository:
             if not exists:
                 return candidate
         raise RuntimeError("Unable to generate unique assignment code")
+
+    def _unique_strategy_session_id(self) -> str:
+        for _ in range(30):
+            candidate = self._code(10)
+            exists = self.db.query(StrategySessionModel).filter(StrategySessionModel.session_id == candidate).first()
+            if not exists:
+                return candidate
+        raise RuntimeError("Unable to generate strategy session id")
 
     def create_classroom(self, class_name: str) -> ClassroomSummary:
         class_code = self._unique_class_code()
@@ -241,6 +262,7 @@ class GameRepository:
             player_name=player_name,
             city=assignment.city,
             cash=assignment.start_cash,
+            duration_days=assignment.duration_days,
             class_code=classroom.class_code,
             assignment_code=assignment.assignment_code,
         )
@@ -262,10 +284,12 @@ class GameRepository:
 
         class_code = None
         assignment_code = None
+        duration_days = 30
         if enrollment:
             _, assignment, classroom = enrollment
             class_code = classroom.class_code
             assignment_code = assignment.assignment_code
+            duration_days = assignment.duration_days
 
         return GameState(
             session_id=row.session_id,
@@ -277,6 +301,7 @@ class GameRepository:
             debt=row.debt,
             stress=row.stress,
             status=row.status,
+            duration_days=duration_days,
             class_code=class_code,
             assignment_code=assignment_code,
         )
@@ -430,3 +455,176 @@ class GameRepository:
         if score >= 60:
             return "At-risk budgeting and planning"
         return "Needs intervention and support"
+
+    # ---------- Strategy Assignment (1-hour / 30-day sprint) ----------
+    def create_strategy_session(
+        self,
+        *,
+        player_name: str,
+        total_days: int,
+        assignment_minutes: int,
+        offers: list[dict],
+        day_brief: str,
+    ) -> StrategyPublicState:
+        session_id = self._unique_strategy_session_id()
+        row = StrategySessionModel(
+            session_id=session_id,
+            player_name=player_name.strip() or "Student",
+            current_day=1,
+            total_days=total_days,
+            assignment_minutes=assignment_minutes,
+            status="active",
+            total_profit=0.0,
+            optimal_profit=0.0,
+            selected_count=0,
+            current_offers_json=json.dumps(offers),
+            current_day_brief=day_brief[:255],
+        )
+        self.db.add(row)
+        self.db.commit()
+        return self._strategy_public_state(row)
+
+    def get_strategy_state(self, session_id: str) -> StrategyPublicState | None:
+        row = self.db.get(StrategySessionModel, session_id)
+        if row is None:
+            return None
+        return self._strategy_public_state(row)
+
+    def list_strategy_recent_channels(self, session_id: str, limit: int = 6) -> list[str]:
+        rows = (
+            self.db.query(StrategyDecisionModel)
+            .filter(StrategyDecisionModel.session_id == session_id)
+            .order_by(StrategyDecisionModel.id.desc())
+            .limit(limit)
+            .all()
+        )
+        channels: list[str] = []
+        for row in rows:
+            try:
+                offers = json.loads(row.offers_json)
+            except Exception:
+                offers = []
+            for offer in offers:
+                if offer.get("offer_id") == row.chosen_offer_id and offer.get("channel"):
+                    channels.append(str(offer.get("channel")))
+        channels.reverse()
+        return channels
+
+    def choose_strategy_offer(
+        self,
+        *,
+        session_id: str,
+        offer_id: str,
+        next_offers: list[dict] | None,
+        next_day_brief: str | None,
+    ) -> StrategyChooseResponse:
+        row = self.db.get(StrategySessionModel, session_id)
+        if row is None:
+            raise ValueError("Strategy session not found")
+        if row.status != "active":
+            raise ValueError("Strategy session already completed")
+
+        offers = self._decode_offers(row.current_offers_json)
+        if not offers:
+            raise ValueError("No offers available to choose")
+
+        selected = next((o for o in offers if str(o.get("offer_id")) == offer_id), None)
+        if selected is None:
+            raise ValueError("Selected offer not found for current day")
+
+        optimal = max(float(o.get("expected_profit", -10_000)) for o in offers)
+        chosen_profit = float(selected.get("expected_profit", 0.0))
+        chosen_title = str(selected.get("title", "Selected Offer"))[:160]
+
+        row.total_profit += chosen_profit
+        row.optimal_profit += optimal
+        row.selected_count += 1
+
+        decision = StrategyDecisionModel(
+            session_id=row.session_id,
+            day=row.current_day,
+            chosen_offer_id=str(selected.get("offer_id")),
+            chosen_offer_title=chosen_title,
+            chosen_profit=chosen_profit,
+            optimal_profit=optimal,
+            offers_json=json.dumps(offers),
+            day_brief=row.current_day_brief,
+        )
+        self.db.add(decision)
+
+        if row.current_day >= row.total_days:
+            row.status = "completed"
+            row.current_offers_json = "[]"
+            row.current_day_brief = "Assignment completed."
+        else:
+            row.current_day += 1
+            row.current_offers_json = json.dumps(next_offers or [])
+            row.current_day_brief = (next_day_brief or f"Day {row.current_day} opportunities loaded.")[:255]
+
+        self.db.commit()
+        self.db.refresh(row)
+
+        return StrategyChooseResponse(
+            state=self._strategy_public_state(row),
+            chosen_offer_title=chosen_title,
+            chosen_profit=round(chosen_profit, 2),
+            running_profit=round(row.total_profit, 2),
+        )
+
+    def strategy_result(self, session_id: str) -> StrategyResultResponse | None:
+        row = self.db.get(StrategySessionModel, session_id)
+        if row is None:
+            return None
+        denom = row.optimal_profit if row.optimal_profit > 0 else 1.0
+        pct = max(0.0, min(100.0, (row.total_profit / denom) * 100))
+        return StrategyResultResponse(
+            session_id=row.session_id,
+            player_name=row.player_name,
+            total_days=row.total_days,
+            student_profit=round(row.total_profit, 2),
+            optimal_profit=round(row.optimal_profit, 2),
+            success_percentage=round(pct, 2),
+            status=row.status,
+        )
+
+    def _decode_offers(self, offers_json: str) -> list[dict]:
+        try:
+            payload = json.loads(offers_json or "[]")
+            if isinstance(payload, list):
+                return payload
+            return []
+        except Exception:
+            return []
+
+    def _strategy_public_state(self, row: StrategySessionModel) -> StrategyPublicState:
+        offers_raw = self._decode_offers(row.current_offers_json)
+        public_offers: list[StrategyOffer] = []
+        for offer in offers_raw:
+            risk = str(offer.get("risk", "medium")).lower()
+            if risk not in {"low", "medium", "high"}:
+                risk = "medium"
+            public_offers.append(
+                StrategyOffer(
+                    offer_id=str(offer.get("offer_id", "")),
+                    title=str(offer.get("title", "Opportunity"))[:120],
+                    text=str(offer.get("text", ""))[:180],
+                    channel=str(offer.get("channel", "Other"))[:60],
+                    time_hours=float(offer.get("time_hours", 1.0)),
+                    miles=float(offer.get("miles", 0.0)),
+                    cash_in=float(offer.get("cash_in", 0.0)),
+                    cash_out=float(offer.get("cash_out", 0.0)),
+                    risk=risk,
+                )
+            )
+        return StrategyPublicState(
+            session_id=row.session_id,
+            player_name=row.player_name,
+            current_day=row.current_day,
+            total_days=row.total_days,
+            assignment_minutes=row.assignment_minutes,
+            status=row.status,
+            total_profit=round(row.total_profit, 2),
+            selected_count=row.selected_count,
+            offers=public_offers,
+            day_brief=row.current_day_brief,
+        )

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from .db import SessionLocal, init_db
-from .engine import FinanceGameEngine
+from .engine import FinanceGameEngine, StrategyAssignmentEngine
 from .repository import GameRepository
 from .schemas import (
     AdvanceDayRequest,
@@ -25,6 +25,11 @@ from .schemas import (
     GameState,
     NewGameRequest,
     StudentJoinAssignmentRequest,
+    StrategyChooseRequest,
+    StrategyChooseResponse,
+    StrategyResultResponse,
+    StrategyStartRequest,
+    StrategyPublicState,
     TeacherDayLog,
     TeacherOverviewResponse,
     TeacherSessionSummary,
@@ -34,6 +39,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 
 app = FastAPI(title="Hustle & Home API", version="0.3.0")
 engine = FinanceGameEngine()
+strategy_engine = StrategyAssignmentEngine()
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://127.0.0.1:4173,http://localhost:4173").split(",")
 TEACHER_API_KEY = os.getenv("TEACHER_API_KEY", "")
@@ -222,3 +228,101 @@ def teacher_session_logs(
     safe_limit = max(1, min(limit, 90))
     repo = GameRepository(db)
     return repo.teacher_session_logs(session_id=session_id, limit=safe_limit)
+
+
+@app.post("/api/strategy/start", response_model=StrategyPublicState)
+def strategy_start(req: StrategyStartRequest, db: Session = Depends(get_db)) -> StrategyPublicState:
+    repo = GameRepository(db)
+    brief, offers = strategy_engine.build_day_offers(
+        day=1,
+        total_days=req.total_days,
+        running_profit=0.0,
+        previous_channels=[],
+    )
+    offers_payload = [
+        {
+            "offer_id": o.offer_id,
+            "title": o.title,
+            "text": o.text,
+            "channel": o.channel,
+            "time_hours": o.time_hours,
+            "miles": o.miles,
+            "cash_in": o.cash_in,
+            "cash_out": o.cash_out,
+            "risk": o.risk,
+            "expected_profit": o.expected_profit,
+        }
+        for o in offers
+    ]
+    return repo.create_strategy_session(
+        player_name=req.player_name,
+        total_days=req.total_days,
+        assignment_minutes=req.assignment_minutes,
+        offers=offers_payload,
+        day_brief=brief,
+    )
+
+
+@app.get("/api/strategy/{session_id}", response_model=StrategyPublicState)
+def strategy_state(session_id: str, db: Session = Depends(get_db)) -> StrategyPublicState:
+    repo = GameRepository(db)
+    state = repo.get_strategy_state(session_id=session_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Strategy session not found")
+    return state
+
+
+@app.get("/api/strategy/{session_id}/result", response_model=StrategyResultResponse)
+def strategy_result(session_id: str, db: Session = Depends(get_db)) -> StrategyResultResponse:
+    repo = GameRepository(db)
+    result = repo.strategy_result(session_id=session_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Strategy session not found")
+    return result
+
+
+@app.post("/api/strategy/choose", response_model=StrategyChooseResponse)
+def strategy_choose(req: StrategyChooseRequest, db: Session = Depends(get_db)) -> StrategyChooseResponse:
+    repo = GameRepository(db)
+    state = repo.get_strategy_state(req.session_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Strategy session not found")
+    if state.status != "active":
+        raise HTTPException(status_code=400, detail="Strategy session already completed")
+
+    previous_channels = repo.list_strategy_recent_channels(req.session_id, limit=6)
+    next_offers_payload: list[dict] | None = None
+    next_brief: str | None = None
+
+    if state.current_day < state.total_days:
+        next_brief, next_offers = strategy_engine.build_day_offers(
+            day=state.current_day + 1,
+            total_days=state.total_days,
+            running_profit=state.total_profit,
+            previous_channels=previous_channels,
+        )
+        next_offers_payload = [
+            {
+                "offer_id": o.offer_id,
+                "title": o.title,
+                "text": o.text,
+                "channel": o.channel,
+                "time_hours": o.time_hours,
+                "miles": o.miles,
+                "cash_in": o.cash_in,
+                "cash_out": o.cash_out,
+                "risk": o.risk,
+                "expected_profit": o.expected_profit,
+            }
+            for o in next_offers
+        ]
+
+    try:
+        return repo.choose_strategy_offer(
+            session_id=req.session_id,
+            offer_id=req.offer_id,
+            next_offers=next_offers_payload,
+            next_day_brief=next_brief,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

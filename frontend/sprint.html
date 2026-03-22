@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profit Sprint Assignment | Hustle & Home</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="hero">
+        <h1>1-Hour Profit Sprint (30-Day Simulation)</h1>
+        <p>
+          You will receive daily demand/sales opportunities. Pick one each day to maximize total net profit over 30
+          simulated days.
+        </p>
+        <p><a href="./" style="color: #fbc02d; font-weight: 700">Back to Main Game</a></p>
+      </section>
+
+      <section class="panel">
+        <h2>Start Assignment</h2>
+        <div class="grid three">
+          <label>
+            Student Name
+            <input id="playerName" value="Student" />
+          </label>
+          <label>
+            Total Days
+            <input id="totalDays" type="number" value="30" min="7" max="45" />
+          </label>
+          <label>
+            Assignment Minutes
+            <input id="assignmentMinutes" type="number" value="60" min="20" max="120" />
+          </label>
+        </div>
+        <button id="startSprintBtn">Start Sprint</button>
+      </section>
+
+      <section class="panel">
+        <h2>Progress</h2>
+        <div id="progressStats" class="stats"></div>
+        <p id="dayBrief" class="meta"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Today's Opportunities</h2>
+        <div id="offers" class="log"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Decision Log</h2>
+        <div id="decisionLog" class="log"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Final Evaluation</h2>
+        <div id="finalResult" class="log"></div>
+      </section>
+    </main>
+    <script src="./runtime-config.js"></script>
+    <script src="./sprint.js"></script>
+  </body>
+</html>
