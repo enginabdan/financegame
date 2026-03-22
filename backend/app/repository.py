@@ -3,39 +3,75 @@ from __future__ import annotations
 import json
 import random
 import string
+from datetime import datetime, timedelta
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from .db import (
+    AuditEventModel,
     AssignmentEnrollmentModel,
     AssignmentModel,
     ClassroomModel,
+    DeletedEntityModel,
     GameDayLogModel,
     GameSessionModel,
     StrategyDecisionModel,
     StrategySessionModel,
 )
 from .schemas import (
+    ActionResponse,
+    AuditEventSummary,
+    DeletedEntitySummary,
     AssignmentRubricRow,
     AssignmentSummary,
     ClassroomSummary,
     DailyResult,
     GameState,
+    StrategyDecisionReview,
     TeacherDayLog,
     TeacherOverviewResponse,
+    TeacherRiskAlert,
     TeacherSessionSummary,
     StrategyChooseResponse,
     StrategyLeaderboardRow,
     StrategyOffer,
+    StrategyOfferReview,
     StrategyPublicState,
     StrategyResultResponse,
+    StrategySessionReview,
 )
 
 
 class GameRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def _serialize_value(self, value):
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return value
+
+    def _serialize_row(self, row, fields: list[str]) -> dict:
+        return {field: self._serialize_value(getattr(row, field)) for field in fields}
+
+    def _archive_entity(self, *, entity_type: str, entity_key: str, payload: dict) -> None:
+        archive = DeletedEntityModel(
+            entity_type=entity_type,
+            entity_key=entity_key,
+            payload_json=json.dumps(payload),
+        )
+        self.db.add(archive)
+
+    def _audit(self, *, action: str, target_type: str, target_key: str, detail: dict | None = None, actor: str = "teacher") -> None:
+        event = AuditEventModel(
+            actor=actor[:64],
+            action=action[:64],
+            target_type=target_type[:32],
+            target_key=target_key[:120],
+            detail_json=json.dumps(detail or {}),
+        )
+        self.db.add(event)
 
     def _code(self, length: int = 6) -> str:
         return "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
@@ -68,6 +104,7 @@ class GameRepository:
         class_code = self._unique_class_code()
         row = ClassroomModel(class_code=class_code, class_name=class_name.strip())
         self.db.add(row)
+        self._audit(action="create_classroom", target_type="classroom", target_key=class_code, detail={"class_name": class_name})
         self.db.commit()
         self.db.refresh(row)
         return ClassroomSummary(
@@ -77,6 +114,72 @@ class GameRepository:
             active_assignment_count=0,
             created_at=row.created_at,
         )
+
+    def update_classroom(self, class_code: str, class_name: str) -> ClassroomSummary:
+        row = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if row is None:
+            raise ValueError("Class not found")
+        row.class_name = class_name.strip()
+        self._audit(
+            action="update_classroom",
+            target_type="classroom",
+            target_key=row.class_code,
+            detail={"class_name": row.class_name},
+        )
+        self.db.commit()
+        self.db.refresh(row)
+
+        assignment_count = self.db.query(func.count(AssignmentModel.id)).filter(AssignmentModel.classroom_id == row.id).scalar() or 0
+        active_assignment_count = (
+            self.db.query(func.count(AssignmentModel.id))
+            .filter(AssignmentModel.classroom_id == row.id, AssignmentModel.is_active.is_(True))
+            .scalar()
+            or 0
+        )
+        return ClassroomSummary(
+            class_code=row.class_code,
+            class_name=row.class_name,
+            assignment_count=int(assignment_count),
+            active_assignment_count=int(active_assignment_count),
+            created_at=row.created_at,
+        )
+
+    def delete_classroom(self, class_code: str) -> ActionResponse:
+        row = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if row is None:
+            raise ValueError("Class not found")
+        assignments = (
+            self.db.query(AssignmentModel)
+            .filter(AssignmentModel.classroom_id == row.id)
+            .order_by(AssignmentModel.id.asc())
+            .all()
+        )
+        payload = {
+            "classroom": self._serialize_row(
+                row,
+                ["class_code", "class_name", "created_at"],
+            ),
+            "assignments": [
+                self._serialize_row(
+                    assignment,
+                    [
+                        "assignment_code",
+                        "title",
+                        "city",
+                        "start_cash",
+                        "duration_days",
+                        "is_active",
+                        "created_at",
+                    ],
+                )
+                for assignment in assignments
+            ],
+        }
+        self._archive_entity(entity_type="classroom", entity_key=row.class_code, payload=payload)
+        self._audit(action="delete_classroom", target_type="classroom", target_key=row.class_code)
+        self.db.delete(row)
+        self.db.commit()
+        return ActionResponse(message=f"Class {class_code.upper()} deleted")
 
     def list_classrooms(self) -> list[ClassroomSummary]:
         assignment_count_subq = (
@@ -130,6 +233,12 @@ class GameRepository:
             is_active=True,
         )
         self.db.add(row)
+        self._audit(
+            action="create_assignment",
+            target_type="assignment",
+            target_key=assignment_code,
+            detail={"class_code": classroom.class_code, "title": title},
+        )
         self.db.commit()
         self.db.refresh(row)
 
@@ -144,6 +253,95 @@ class GameRepository:
             enrolled_sessions=0,
             created_at=row.created_at,
         )
+
+    def update_assignment(
+        self,
+        assignment_code: str,
+        *,
+        title: str | None,
+        city: str | None,
+        start_cash: float | None,
+        duration_days: int | None,
+        is_active: bool | None,
+    ) -> AssignmentSummary:
+        row_data = (
+            self.db.query(AssignmentModel, ClassroomModel)
+            .join(ClassroomModel, ClassroomModel.id == AssignmentModel.classroom_id)
+            .filter(AssignmentModel.assignment_code == assignment_code.upper())
+            .first()
+        )
+        if row_data is None:
+            raise ValueError("Assignment not found")
+
+        assignment, classroom = row_data
+        if title is not None:
+            assignment.title = title.strip()
+        if city is not None:
+            assignment.city = city.strip()
+        if start_cash is not None:
+            assignment.start_cash = start_cash
+        if duration_days is not None:
+            assignment.duration_days = duration_days
+        if is_active is not None:
+            assignment.is_active = is_active
+        self._audit(
+            action="update_assignment",
+            target_type="assignment",
+            target_key=assignment.assignment_code,
+            detail={
+                "title": assignment.title,
+                "city": assignment.city,
+                "start_cash": assignment.start_cash,
+                "duration_days": assignment.duration_days,
+                "is_active": assignment.is_active,
+            },
+        )
+        self.db.commit()
+        self.db.refresh(assignment)
+
+        enrolled = (
+            self.db.query(func.count(AssignmentEnrollmentModel.id))
+            .filter(AssignmentEnrollmentModel.assignment_id == assignment.id)
+            .scalar()
+            or 0
+        )
+        return AssignmentSummary(
+            assignment_code=assignment.assignment_code,
+            class_code=classroom.class_code,
+            title=assignment.title,
+            city=assignment.city,
+            start_cash=assignment.start_cash,
+            duration_days=assignment.duration_days,
+            is_active=assignment.is_active,
+            enrolled_sessions=int(enrolled),
+            created_at=assignment.created_at,
+        )
+
+    def delete_assignment(self, assignment_code: str) -> ActionResponse:
+        row = self.db.query(AssignmentModel).filter(AssignmentModel.assignment_code == assignment_code.upper()).first()
+        if row is None:
+            raise ValueError("Assignment not found")
+        classroom = self.db.get(ClassroomModel, row.classroom_id)
+        payload = {
+            "assignment": self._serialize_row(
+                row,
+                [
+                    "assignment_code",
+                    "title",
+                    "city",
+                    "start_cash",
+                    "duration_days",
+                    "is_active",
+                    "created_at",
+                ],
+            ),
+            "class_code": classroom.class_code if classroom else None,
+        }
+        self._archive_entity(entity_type="assignment", entity_key=row.assignment_code, payload=payload)
+        self._audit(action="delete_assignment", target_type="assignment", target_key=row.assignment_code)
+        self.db.delete(row)
+        self.db.commit()
+        return ActionResponse(message=f"Assignment {assignment_code.upper()} deleted")
 
     def list_assignments(self, class_code: str | None = None) -> list[AssignmentSummary]:
         query = self.db.query(AssignmentModel, ClassroomModel).join(
@@ -232,6 +430,12 @@ class GameRepository:
             score=0,
         )
         self.db.add(row)
+        self._audit(
+            action="create_session",
+            target_type="session",
+            target_key=state.session_id,
+            detail={"player_name": state.player_name, "city": state.city},
+        )
         self.db.flush()
 
         if class_code and assignment_code:
@@ -435,6 +639,156 @@ class GameRepository:
             for row in rows
         ]
 
+    def update_teacher_session(
+        self,
+        session_id: str,
+        *,
+        player_name: str | None,
+        city: str | None,
+        status: str | None,
+        day: int | None,
+        cash: float | None,
+        tax_reserve: float | None,
+        debt: float | None,
+        stress: int | None,
+        score: int | None,
+    ) -> TeacherSessionSummary:
+        row = self.db.get(GameSessionModel, session_id)
+        if row is None:
+            raise ValueError("Session not found")
+
+        if player_name is not None:
+            row.player_name = player_name.strip()
+        if city is not None:
+            row.city = city.strip()
+        if status is not None:
+            row.status = status
+        if day is not None:
+            row.day = day
+        if cash is not None:
+            row.cash = cash
+        if tax_reserve is not None:
+            row.tax_reserve = tax_reserve
+        if debt is not None:
+            row.debt = debt
+        if stress is not None:
+            row.stress = stress
+        if score is not None:
+            row.score = score
+        self._audit(
+            action="update_session",
+            target_type="session",
+            target_key=row.session_id,
+            detail={
+                "player_name": row.player_name,
+                "city": row.city,
+                "status": row.status,
+                "day": row.day,
+                "cash": row.cash,
+                "stress": row.stress,
+                "score": row.score,
+            },
+        )
+        self.db.commit()
+        self.db.refresh(row)
+
+        enrollment = (
+            self.db.query(AssignmentEnrollmentModel, AssignmentModel, ClassroomModel)
+            .join(AssignmentModel, AssignmentModel.id == AssignmentEnrollmentModel.assignment_id)
+            .join(ClassroomModel, ClassroomModel.id == AssignmentModel.classroom_id)
+            .filter(AssignmentEnrollmentModel.session_id == row.session_id)
+            .first()
+        )
+        class_code_value = None
+        assignment_code_value = None
+        if enrollment:
+            _, assignment, classroom = enrollment
+            class_code_value = classroom.class_code
+            assignment_code_value = assignment.assignment_code
+
+        return TeacherSessionSummary(
+            session_id=row.session_id,
+            player_name=row.player_name,
+            city=row.city,
+            status=row.status,
+            day=row.day,
+            cash=round(row.cash, 2),
+            stress=row.stress,
+            score=row.score,
+            class_code=class_code_value,
+            assignment_code=assignment_code_value,
+            updated_at=row.updated_at,
+        )
+
+    def delete_teacher_session(self, session_id: str) -> ActionResponse:
+        row = self.db.get(GameSessionModel, session_id)
+        if row is None:
+            raise ValueError("Session not found")
+        day_logs = (
+            self.db.query(GameDayLogModel)
+            .filter(GameDayLogModel.session_id == session_id)
+            .order_by(GameDayLogModel.id.asc())
+            .all()
+        )
+        enrollment = (
+            self.db.query(AssignmentEnrollmentModel, AssignmentModel, ClassroomModel)
+            .join(AssignmentModel, AssignmentModel.id == AssignmentEnrollmentModel.assignment_id)
+            .join(ClassroomModel, ClassroomModel.id == AssignmentModel.classroom_id)
+            .filter(AssignmentEnrollmentModel.session_id == session_id)
+            .first()
+        )
+        payload = {
+            "session": self._serialize_row(
+                row,
+                [
+                    "session_id",
+                    "player_name",
+                    "city",
+                    "day",
+                    "cash",
+                    "tax_reserve",
+                    "debt",
+                    "stress",
+                    "status",
+                    "score",
+                    "created_at",
+                    "updated_at",
+                ],
+            ),
+            "logs": [
+                self._serialize_row(
+                    log,
+                    [
+                        "day",
+                        "gross_income",
+                        "platform_fees",
+                        "variable_costs",
+                        "household_costs",
+                        "tax_reserve",
+                        "event_title",
+                        "event_text",
+                        "event_cash_impact",
+                        "end_cash",
+                        "created_at",
+                    ],
+                )
+                for log in day_logs
+            ],
+            "enrollment": (
+                {
+                    "class_code": enrollment[2].class_code,
+                    "assignment_code": enrollment[1].assignment_code,
+                }
+                if enrollment
+                else None
+            ),
+        }
+        self._archive_entity(entity_type="session", entity_key=row.session_id, payload=payload)
+        self._audit(action="delete_session", target_type="session", target_key=row.session_id)
+        self.db.delete(row)
+        self.db.commit()
+        return ActionResponse(message=f"Session {session_id} deleted")
+
     def _grade_letter(self, score: int) -> str:
         if score >= 90:
             return "A"
@@ -482,6 +836,12 @@ class GameRepository:
             current_day_brief=day_brief[:255],
         )
         self.db.add(row)
+        self._audit(
+            action="create_strategy_session",
+            target_type="strategy_session",
+            target_key=session_id,
+            detail={"player_name": row.player_name, "total_days": total_days},
+        )
         self.db.commit()
         return self._strategy_public_state(row)
 
@@ -620,6 +980,552 @@ class GameRepository:
             )
         )
         return data[:limit]
+
+    def strategy_session_review(self, session_id: str) -> StrategySessionReview | None:
+        row = self.db.get(StrategySessionModel, session_id)
+        if row is None:
+            return None
+
+        decisions_rows = (
+            self.db.query(StrategyDecisionModel)
+            .filter(StrategyDecisionModel.session_id == session_id)
+            .order_by(StrategyDecisionModel.day.asc(), StrategyDecisionModel.id.asc())
+            .all()
+        )
+        decisions: list[StrategyDecisionReview] = []
+        for dec in decisions_rows:
+            offers: list[StrategyOfferReview] = []
+            for offer in self._decode_offers(dec.offers_json):
+                risk = str(offer.get("risk", "medium")).lower()
+                if risk not in {"low", "medium", "high"}:
+                    risk = "medium"
+                offers.append(
+                    StrategyOfferReview(
+                        offer_id=str(offer.get("offer_id", "")),
+                        title=str(offer.get("title", "Opportunity"))[:160],
+                        channel=str(offer.get("channel", "Other"))[:80],
+                        cash_in=float(offer.get("cash_in", 0.0)),
+                        cash_out=float(offer.get("cash_out", 0.0)),
+                        expected_profit=float(offer.get("expected_profit", 0.0)),
+                        risk=risk,
+                    )
+                )
+            decisions.append(
+                StrategyDecisionReview(
+                    id=dec.id,
+                    day=dec.day,
+                    chosen_offer_id=dec.chosen_offer_id,
+                    chosen_offer_title=dec.chosen_offer_title,
+                    chosen_profit=round(dec.chosen_profit, 2),
+                    optimal_profit=round(dec.optimal_profit, 2),
+                    gap_to_optimal=round(dec.optimal_profit - dec.chosen_profit, 2),
+                    day_brief=dec.day_brief,
+                    offers=offers,
+                    created_at=dec.created_at,
+                )
+            )
+
+        denom = row.optimal_profit if row.optimal_profit > 0 else 1.0
+        pct = max(0.0, min(100.0, (row.total_profit / denom) * 100))
+        return StrategySessionReview(
+            session_id=row.session_id,
+            player_name=row.player_name,
+            current_day=row.current_day,
+            total_days=row.total_days,
+            assignment_minutes=row.assignment_minutes,
+            status=row.status,
+            total_profit=round(row.total_profit, 2),
+            optimal_profit=round(row.optimal_profit, 2),
+            success_percentage=round(pct, 2),
+            selected_count=row.selected_count,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            decisions=decisions,
+        )
+
+    def delete_strategy_session(self, session_id: str) -> ActionResponse:
+        row = self.db.get(StrategySessionModel, session_id)
+        if row is None:
+            raise ValueError("Strategy session not found")
+        decisions = (
+            self.db.query(StrategyDecisionModel)
+            .filter(StrategyDecisionModel.session_id == session_id)
+            .order_by(StrategyDecisionModel.id.asc())
+            .all()
+        )
+        payload = {
+            "strategy_session": self._serialize_row(
+                row,
+                [
+                    "session_id",
+                    "player_name",
+                    "current_day",
+                    "total_days",
+                    "assignment_minutes",
+                    "status",
+                    "total_profit",
+                    "optimal_profit",
+                    "selected_count",
+                    "current_offers_json",
+                    "current_day_brief",
+                    "created_at",
+                    "updated_at",
+                ],
+            ),
+            "decisions": [
+                self._serialize_row(
+                    decision,
+                    [
+                        "day",
+                        "chosen_offer_id",
+                        "chosen_offer_title",
+                        "chosen_profit",
+                        "optimal_profit",
+                        "offers_json",
+                        "day_brief",
+                        "created_at",
+                    ],
+                )
+                for decision in decisions
+            ],
+        }
+        self._archive_entity(entity_type="strategy_session", entity_key=row.session_id, payload=payload)
+        self._audit(action="delete_strategy_session", target_type="strategy_session", target_key=row.session_id)
+        self.db.delete(row)
+        self.db.commit()
+        return ActionResponse(message=f"Strategy session {session_id} deleted")
+
+    def list_deleted_entities(
+        self,
+        *,
+        limit: int = 200,
+        entity_type: str | None = None,
+        since_days: int | None = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
+    ) -> list[DeletedEntitySummary]:
+        query = self.db.query(DeletedEntityModel)
+        if entity_type:
+            query = query.filter(DeletedEntityModel.entity_type == entity_type.strip().lower())
+        if since_days is not None and since_days > 0:
+            min_time = datetime.utcnow() - timedelta(days=since_days)
+            query = query.filter(DeletedEntityModel.deleted_at >= min_time)
+        if from_date is not None:
+            query = query.filter(DeletedEntityModel.deleted_at >= from_date)
+        if to_date is not None:
+            query = query.filter(DeletedEntityModel.deleted_at <= to_date)
+
+        rows = query.order_by(DeletedEntityModel.deleted_at.desc(), DeletedEntityModel.id.desc()).limit(limit).all()
+        return [
+            DeletedEntitySummary(
+                id=row.id,
+                entity_type=row.entity_type,
+                entity_key=row.entity_key,
+                deleted_at=row.deleted_at,
+            )
+            for row in rows
+        ]
+
+    def list_audit_events(
+        self,
+        *,
+        limit: int = 300,
+        action: str | None = None,
+        target_type: str | None = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
+    ) -> list[AuditEventSummary]:
+        query = self.db.query(AuditEventModel)
+        if action:
+            query = query.filter(AuditEventModel.action == action.strip().lower())
+        if target_type:
+            query = query.filter(AuditEventModel.target_type == target_type.strip().lower())
+        if from_date is not None:
+            query = query.filter(AuditEventModel.created_at >= from_date)
+        if to_date is not None:
+            query = query.filter(AuditEventModel.created_at <= to_date)
+        rows = query.order_by(AuditEventModel.created_at.desc(), AuditEventModel.id.desc()).limit(limit).all()
+        return [
+            AuditEventSummary(
+                id=row.id,
+                actor=row.actor,
+                action=row.action,
+                target_type=row.target_type,
+                target_key=row.target_key,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
+
+    def teacher_risk_alerts(
+        self,
+        *,
+        limit: int = 100,
+        class_code: str | None = None,
+        assignment_code: str | None = None,
+    ) -> list[TeacherRiskAlert]:
+        query = self.db.query(GameSessionModel).order_by(GameSessionModel.updated_at.desc())
+        if class_code or assignment_code:
+            query = (
+                query.join(AssignmentEnrollmentModel, AssignmentEnrollmentModel.session_id == GameSessionModel.session_id)
+                .join(AssignmentModel, AssignmentModel.id == AssignmentEnrollmentModel.assignment_id)
+                .join(ClassroomModel, ClassroomModel.id == AssignmentModel.classroom_id)
+            )
+            if class_code:
+                query = query.filter(ClassroomModel.class_code == class_code.upper())
+            if assignment_code:
+                query = query.filter(AssignmentModel.assignment_code == assignment_code.upper())
+
+        rows = query.limit(max(limit * 2, 200)).all()
+        alerts: list[TeacherRiskAlert] = []
+        for row in rows:
+            enrollment = (
+                self.db.query(AssignmentEnrollmentModel, AssignmentModel, ClassroomModel)
+                .join(AssignmentModel, AssignmentModel.id == AssignmentEnrollmentModel.assignment_id)
+                .join(ClassroomModel, ClassroomModel.id == AssignmentModel.classroom_id)
+                .filter(AssignmentEnrollmentModel.session_id == row.session_id)
+                .first()
+            )
+            ccode = enrollment[2].class_code if enrollment else None
+            acode = enrollment[1].assignment_code if enrollment else None
+
+            reasons: list[str] = []
+            risk_score = 0
+            if row.cash < 400:
+                reasons.append("Very low cash buffer")
+                risk_score += 30
+            elif row.cash < 900:
+                reasons.append("Low cash buffer")
+                risk_score += 15
+            if row.debt > 3000:
+                reasons.append("High debt load")
+                risk_score += 30
+            elif row.debt > 1200:
+                reasons.append("Rising debt")
+                risk_score += 15
+            if row.stress >= 85:
+                reasons.append("Critical stress level")
+                risk_score += 30
+            elif row.stress >= 70:
+                reasons.append("High stress level")
+                risk_score += 15
+            if row.status == "failed":
+                reasons.append("Session failed")
+                risk_score += 25
+            if row.day >= 20 and row.score < 55:
+                reasons.append("Low score late in assignment")
+                risk_score += 20
+
+            if risk_score < 15:
+                level = "low"
+            elif risk_score < 35:
+                level = "medium"
+            elif risk_score < 60:
+                level = "high"
+            else:
+                level = "critical"
+
+            if level == "low":
+                continue
+
+            alerts.append(
+                TeacherRiskAlert(
+                    session_id=row.session_id,
+                    player_name=row.player_name,
+                    class_code=ccode,
+                    assignment_code=acode,
+                    status=row.status,
+                    day=row.day,
+                    cash=round(row.cash, 2),
+                    debt=round(row.debt, 2),
+                    stress=row.stress,
+                    score=row.score,
+                    risk_score=min(risk_score, 100),
+                    risk_level=level,
+                    reasons=reasons,
+                )
+            )
+
+        alerts.sort(key=lambda x: (-x.risk_score, x.day))
+        return alerts[:limit]
+
+    def restore_deleted_entity(self, archive_id: int) -> ActionResponse:
+        row = self.db.get(DeletedEntityModel, archive_id)
+        if row is None:
+            raise ValueError("Archived record not found")
+        payload = json.loads(row.payload_json or "{}")
+
+        if row.entity_type == "classroom":
+            self._restore_classroom(payload)
+        elif row.entity_type == "assignment":
+            self._restore_assignment(payload)
+        elif row.entity_type == "session":
+            self._restore_session(payload)
+        elif row.entity_type == "strategy_session":
+            self._restore_strategy_session(payload)
+        else:
+            raise ValueError("Unsupported archived entity type")
+
+        self.db.delete(row)
+        self._audit(action="restore_deleted", target_type=row.entity_type, target_key=row.entity_key, detail={"archive_id": archive_id})
+        self.db.commit()
+        return ActionResponse(message=f"Restored {row.entity_type} ({row.entity_key})")
+
+    def bulk_delete_sessions(self, session_ids: list[str]) -> ActionResponse:
+        deleted = 0
+        for session_id in session_ids:
+            row = self.db.get(GameSessionModel, session_id)
+            if row is None:
+                continue
+            self.delete_teacher_session(session_id)
+            deleted += 1
+        self._audit(action="bulk_delete_sessions", target_type="session", target_key="bulk", detail={"count": deleted})
+        self.db.commit()
+        return ActionResponse(message=f"Deleted {deleted} session(s)")
+
+    def bulk_delete_strategy_sessions(self, session_ids: list[str]) -> ActionResponse:
+        deleted = 0
+        for session_id in session_ids:
+            row = self.db.get(StrategySessionModel, session_id)
+            if row is None:
+                continue
+            self.delete_strategy_session(session_id)
+            deleted += 1
+        self._audit(
+            action="bulk_delete_strategy_sessions",
+            target_type="strategy_session",
+            target_key="bulk",
+            detail={"count": deleted},
+        )
+        self.db.commit()
+        return ActionResponse(message=f"Deleted {deleted} sprint session(s)")
+
+    def bulk_restore_deleted_entities(self, archive_ids: list[int]) -> ActionResponse:
+        restored = 0
+        failed = 0
+        for archive_id in archive_ids:
+            try:
+                self.restore_deleted_entity(archive_id=archive_id)
+                restored += 1
+            except Exception:
+                self.db.rollback()
+                failed += 1
+        self._audit(
+            action="bulk_restore_deleted",
+            target_type="archive",
+            target_key="bulk",
+            detail={"restored": restored, "failed": failed},
+        )
+        self.db.commit()
+        return ActionResponse(message=f"Restored {restored} record(s), failed: {failed}")
+
+    def purge_deleted_entities(self, archive_ids: list[int]) -> ActionResponse:
+        rows = (
+            self.db.query(DeletedEntityModel)
+            .filter(DeletedEntityModel.id.in_(archive_ids))
+            .all()
+        )
+        deleted = len(rows)
+        for row in rows:
+            self.db.delete(row)
+        self._audit(action="purge_deleted", target_type="archive", target_key="bulk", detail={"count": deleted})
+        self.db.commit()
+        return ActionResponse(message=f"Permanently deleted {deleted} archived record(s)")
+
+    def purge_deleted_entities_older_than(self, days: int) -> ActionResponse:
+        threshold = datetime.utcnow() - timedelta(days=days)
+        rows = (
+            self.db.query(DeletedEntityModel)
+            .filter(DeletedEntityModel.deleted_at <= threshold)
+            .all()
+        )
+        deleted = len(rows)
+        for row in rows:
+            self.db.delete(row)
+        self._audit(
+            action="purge_deleted_older",
+            target_type="archive",
+            target_key=f"older_than_{days}_days",
+            detail={"count": deleted, "days": days},
+        )
+        self.db.commit()
+        return ActionResponse(message=f"Permanently deleted {deleted} archived record(s) older than {days} day(s)")
+
+    def _parse_dt(self, value):
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(str(value))
+        except Exception:
+            return None
+
+    def _restore_classroom(self, payload: dict) -> None:
+        classroom = payload.get("classroom", {})
+        class_code = str(classroom.get("class_code", "")).upper()
+        if not class_code:
+            raise ValueError("Archived classroom payload invalid")
+
+        existing = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code).first()
+        if existing is None:
+            self.db.add(
+                ClassroomModel(
+                    class_code=class_code,
+                    class_name=str(classroom.get("class_name", "Restored Class"))[:120],
+                    created_at=self._parse_dt(classroom.get("created_at")) or datetime.utcnow(),
+                )
+            )
+            self.db.flush()
+
+        class_row = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code).first()
+        for assignment in payload.get("assignments", []):
+            assignment_code = str(assignment.get("assignment_code", "")).upper()
+            if not assignment_code:
+                continue
+            exists = self.db.query(AssignmentModel).filter(AssignmentModel.assignment_code == assignment_code).first()
+            if exists:
+                continue
+            self.db.add(
+                AssignmentModel(
+                    assignment_code=assignment_code,
+                    classroom_id=class_row.id,
+                    title=str(assignment.get("title", "Restored Assignment"))[:120],
+                    city=str(assignment.get("city", "Charlotte, NC"))[:120],
+                    start_cash=float(assignment.get("start_cash", 1800.0)),
+                    duration_days=int(assignment.get("duration_days", 30)),
+                    is_active=bool(assignment.get("is_active", True)),
+                    created_at=self._parse_dt(assignment.get("created_at")) or datetime.utcnow(),
+                )
+            )
+
+    def _restore_assignment(self, payload: dict) -> None:
+        assignment = payload.get("assignment", {})
+        assignment_code = str(assignment.get("assignment_code", "")).upper()
+        class_code = str(payload.get("class_code", "")).upper()
+        if not assignment_code or not class_code:
+            raise ValueError("Archived assignment payload invalid")
+
+        class_row = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code).first()
+        if class_row is None:
+            raise ValueError("Cannot restore assignment: class not found")
+        exists = self.db.query(AssignmentModel).filter(AssignmentModel.assignment_code == assignment_code).first()
+        if exists:
+            raise ValueError("Assignment already exists")
+
+        self.db.add(
+            AssignmentModel(
+                assignment_code=assignment_code,
+                classroom_id=class_row.id,
+                title=str(assignment.get("title", "Restored Assignment"))[:120],
+                city=str(assignment.get("city", "Charlotte, NC"))[:120],
+                start_cash=float(assignment.get("start_cash", 1800.0)),
+                duration_days=int(assignment.get("duration_days", 30)),
+                is_active=bool(assignment.get("is_active", True)),
+                created_at=self._parse_dt(assignment.get("created_at")) or datetime.utcnow(),
+            )
+        )
+
+    def _restore_session(self, payload: dict) -> None:
+        session = payload.get("session", {})
+        session_id = str(session.get("session_id", ""))
+        if not session_id:
+            raise ValueError("Archived session payload invalid")
+        exists = self.db.get(GameSessionModel, session_id)
+        if exists:
+            raise ValueError("Session already exists")
+
+        session_row = GameSessionModel(
+            session_id=session_id,
+            player_name=str(session.get("player_name", "Restored Student"))[:120],
+            city=str(session.get("city", "Charlotte, NC"))[:120],
+            day=int(session.get("day", 1)),
+            cash=float(session.get("cash", 1800.0)),
+            tax_reserve=float(session.get("tax_reserve", 0.0)),
+            debt=float(session.get("debt", 0.0)),
+            stress=int(session.get("stress", 20)),
+            status=str(session.get("status", "active"))[:24],
+            score=int(session.get("score", 0)),
+            created_at=self._parse_dt(session.get("created_at")) or datetime.utcnow(),
+            updated_at=self._parse_dt(session.get("updated_at")) or datetime.utcnow(),
+        )
+        self.db.add(session_row)
+        self.db.flush()
+
+        for log in payload.get("logs", []):
+            self.db.add(
+                GameDayLogModel(
+                    session_id=session_id,
+                    day=int(log.get("day", 1)),
+                    gross_income=float(log.get("gross_income", 0.0)),
+                    platform_fees=float(log.get("platform_fees", 0.0)),
+                    variable_costs=float(log.get("variable_costs", 0.0)),
+                    household_costs=float(log.get("household_costs", 0.0)),
+                    tax_reserve=float(log.get("tax_reserve", 0.0)),
+                    event_title=str(log.get("event_title", "Restored Log"))[:120],
+                    event_text=str(log.get("event_text", ""))[:255],
+                    event_cash_impact=float(log.get("event_cash_impact", 0.0)),
+                    end_cash=float(log.get("end_cash", 0.0)),
+                    created_at=self._parse_dt(log.get("created_at")) or datetime.utcnow(),
+                )
+            )
+
+        enrollment = payload.get("enrollment")
+        if enrollment:
+            class_code = str(enrollment.get("class_code", "")).upper()
+            assignment_code = str(enrollment.get("assignment_code", "")).upper()
+            assignment_row = (
+                self.db.query(AssignmentModel, ClassroomModel)
+                .join(ClassroomModel, ClassroomModel.id == AssignmentModel.classroom_id)
+                .filter(ClassroomModel.class_code == class_code)
+                .filter(AssignmentModel.assignment_code == assignment_code)
+                .first()
+            )
+            if assignment_row:
+                assignment, _ = assignment_row
+                self.db.add(AssignmentEnrollmentModel(assignment_id=assignment.id, session_id=session_id))
+
+    def _restore_strategy_session(self, payload: dict) -> None:
+        strategy = payload.get("strategy_session", {})
+        session_id = str(strategy.get("session_id", ""))
+        if not session_id:
+            raise ValueError("Archived strategy payload invalid")
+        exists = self.db.get(StrategySessionModel, session_id)
+        if exists:
+            raise ValueError("Strategy session already exists")
+
+        strategy_row = StrategySessionModel(
+            session_id=session_id,
+            player_name=str(strategy.get("player_name", "Restored Sprint"))[:120],
+            current_day=int(strategy.get("current_day", 1)),
+            total_days=int(strategy.get("total_days", 30)),
+            assignment_minutes=int(strategy.get("assignment_minutes", 60)),
+            status=str(strategy.get("status", "active"))[:24],
+            total_profit=float(strategy.get("total_profit", 0.0)),
+            optimal_profit=float(strategy.get("optimal_profit", 0.0)),
+            selected_count=int(strategy.get("selected_count", 0)),
+            current_offers_json=str(strategy.get("current_offers_json", "[]")),
+            current_day_brief=str(strategy.get("current_day_brief", ""))[:255],
+            created_at=self._parse_dt(strategy.get("created_at")) or datetime.utcnow(),
+            updated_at=self._parse_dt(strategy.get("updated_at")) or datetime.utcnow(),
+        )
+        self.db.add(strategy_row)
+        self.db.flush()
+
+        for decision in payload.get("decisions", []):
+            self.db.add(
+                StrategyDecisionModel(
+                    session_id=session_id,
+                    day=int(decision.get("day", 1)),
+                    chosen_offer_id=str(decision.get("chosen_offer_id", ""))[:64],
+                    chosen_offer_title=str(decision.get("chosen_offer_title", "Restored Choice"))[:160],
+                    chosen_profit=float(decision.get("chosen_profit", 0.0)),
+                    optimal_profit=float(decision.get("optimal_profit", 0.0)),
+                    offers_json=str(decision.get("offers_json", "[]")),
+                    day_brief=str(decision.get("day_brief", ""))[:255],
+                    created_at=self._parse_dt(decision.get("created_at")) or datetime.utcnow(),
+                )
+            )
 
     def _decode_offers(self, offers_json: str) -> list[dict]:
         try:

@@ -95,12 +95,30 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 - `GET /api/strategy/{session_id}/result`
 - `POST /api/teacher/classes` (header: `x-teacher-key`)
 - `GET /api/teacher/classes` (header: `x-teacher-key`)
+- `PATCH /api/teacher/classes/{class_code}` (header: `x-teacher-key`)
+- `DELETE /api/teacher/classes/{class_code}` (header: `x-teacher-key`)
 - `POST /api/teacher/assignments` (header: `x-teacher-key`)
 - `GET /api/teacher/assignments` (header: `x-teacher-key`)
+- `PATCH /api/teacher/assignments/{assignment_code}` (header: `x-teacher-key`)
+- `DELETE /api/teacher/assignments/{assignment_code}` (header: `x-teacher-key`)
 - `GET /api/teacher/assignments/{assignment_code}/rubric` (header: `x-teacher-key`)
 - `GET /api/teacher/overview` (header: `x-teacher-key`)
 - `GET /api/teacher/sessions` (header: `x-teacher-key`)
 - `GET /api/teacher/sessions/{session_id}/logs` (header: `x-teacher-key`)
+- `PATCH /api/teacher/sessions/{session_id}` (header: `x-teacher-key`)
+- `DELETE /api/teacher/sessions/{session_id}` (header: `x-teacher-key`)
+- `GET /api/teacher/strategy/leaderboard` (header: `x-teacher-key`)
+- `GET /api/teacher/strategy/sessions/{session_id}` (header: `x-teacher-key`)
+- `DELETE /api/teacher/strategy/sessions/{session_id}` (header: `x-teacher-key`)
+- `POST /api/teacher/sessions/bulk-delete` (header: `x-teacher-key`)
+- `POST /api/teacher/strategy/sessions/bulk-delete` (header: `x-teacher-key`)
+- `GET /api/teacher/trash` (header: `x-teacher-key`)
+- `POST /api/teacher/trash/{archive_id}/restore` (header: `x-teacher-key`)
+- `POST /api/teacher/trash/bulk-restore` (header: `x-teacher-key`)
+- `POST /api/teacher/trash/purge` (header: `x-teacher-key`)
+- `POST /api/teacher/trash/purge-older` (header: `x-teacher-key`)
+- `GET /api/teacher/audit` (header: `x-teacher-key`)
+- `GET /api/teacher/risk-alerts` (header: `x-teacher-key`)
 
 ## Classroom Flow
 
@@ -112,6 +130,8 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
    - Classroom run (enter both class + assignment code).
 5. Teacher dashboard shows all sessions and per-day logs in real time.
 6. Teacher can open assignment rubric and export sessions/day-logs as CSV.
+7. Teacher can edit or delete classes, assignments, and sessions directly in dashboard cards.
+8. Teacher can inspect full sprint decision history (all offered options, selected option, optimal benchmark gap) and delete sprint sessions if needed.
 
 ## Documents
 
@@ -120,4 +140,4 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 
 ## Status
 
-Iteration 3: class/assignment flow + stronger daily simulation economics + teacher setup panel.
+Iteration 4: full teacher data management (edit/delete class-assignment-session) + sprint decision audit view.

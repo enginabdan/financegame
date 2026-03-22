@@ -107,6 +107,10 @@ h2 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 label {
   display: grid;
   gap: 7px;
@@ -163,6 +167,21 @@ button:hover {
 
 button:active {
   transform: translateY(0);
+}
+
+button.secondary {
+  background: linear-gradient(120deg, var(--blue), var(--blue-2));
+  border-color: #0f4c81;
+}
+
+button.warn {
+  background: linear-gradient(120deg, #d97706, #b45309);
+  border-color: #92400e;
+}
+
+button.danger {
+  background: linear-gradient(120deg, #c62828, #b71c1c);
+  border-color: #7f1d1d;
 }
 
 .inline-check {
@@ -241,6 +260,17 @@ button:active {
   margin-right: 8px;
 }
 
+.actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions-row button {
+  margin-top: 0;
+  margin-right: 0;
+}
+
 .meta {
   font-size: 0.92rem;
   color: var(--ink-soft);
@@ -250,6 +280,7 @@ button:active {
 @media (max-width: 760px) {
   .grid.two,
   .grid.three,
+  .grid.four,
   .stats {
     grid-template-columns: 1fr;
   }

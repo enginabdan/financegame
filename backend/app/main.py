@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Generator, Optional
 
@@ -14,24 +15,35 @@ from .db import SessionLocal, init_db
 from .engine import FinanceGameEngine, StrategyAssignmentEngine
 from .repository import GameRepository
 from .schemas import (
+    ActionResponse,
     AdvanceDayRequest,
     AdvanceDayResponse,
     AssignmentRubricRow,
     AssignmentSummary,
+    AuditEventSummary,
+    BulkArchiveRequest,
+    BulkDeleteRequest,
     ClassroomSummary,
     CreateAssignmentRequest,
     CreateClassroomRequest,
+    DeletedEntitySummary,
     DailyResult,
     GameState,
     NewGameRequest,
+    PurgeOlderRequest,
     StudentJoinAssignmentRequest,
+    UpdateAssignmentRequest,
+    UpdateClassroomRequest,
+    UpdateTeacherSessionRequest,
     StrategyChooseRequest,
     StrategyChooseResponse,
     StrategyLeaderboardRow,
     StrategyResultResponse,
+    StrategySessionReview,
     StrategyStartRequest,
     StrategyPublicState,
     TeacherDayLog,
+    TeacherRiskAlert,
     TeacherOverviewResponse,
     TeacherSessionSummary,
 )
@@ -72,6 +84,15 @@ def _require_teacher_key(x_teacher_key: Optional[str]) -> None:
         raise HTTPException(status_code=503, detail="Teacher API key not configured")
     if x_teacher_key != TEACHER_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid teacher key")
+
+
+def _parse_iso_datetime(value: str | None, field_name: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name} format. Use ISO datetime.") from exc
 
 
 @app.get("/health")
@@ -146,6 +167,35 @@ def list_classes(
     return repo.list_classrooms()
 
 
+@app.patch("/api/teacher/classes/{class_code}", response_model=ClassroomSummary)
+def update_classroom(
+    class_code: str,
+    req: UpdateClassroomRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ClassroomSummary:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.update_classroom(class_code=class_code, class_name=req.class_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/teacher/classes/{class_code}", response_model=ActionResponse)
+def delete_classroom(
+    class_code: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.delete_classroom(class_code=class_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.post("/api/teacher/assignments", response_model=AssignmentSummary)
 def create_assignment(
     req: CreateAssignmentRequest,
@@ -175,6 +225,42 @@ def list_assignments(
     _require_teacher_key(x_teacher_key)
     repo = GameRepository(db)
     return repo.list_assignments(class_code=class_code)
+
+
+@app.patch("/api/teacher/assignments/{assignment_code}", response_model=AssignmentSummary)
+def update_assignment(
+    assignment_code: str,
+    req: UpdateAssignmentRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> AssignmentSummary:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.update_assignment(
+            assignment_code=assignment_code,
+            title=req.title,
+            city=req.city,
+            start_cash=req.start_cash,
+            duration_days=req.duration_days,
+            is_active=req.is_active,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/teacher/assignments/{assignment_code}", response_model=ActionResponse)
+def delete_assignment(
+    assignment_code: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.delete_assignment(assignment_code=assignment_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/teacher/assignments/{assignment_code}/rubric", response_model=list[AssignmentRubricRow])
@@ -229,6 +315,57 @@ def teacher_session_logs(
     safe_limit = max(1, min(limit, 90))
     repo = GameRepository(db)
     return repo.teacher_session_logs(session_id=session_id, limit=safe_limit)
+
+
+@app.patch("/api/teacher/sessions/{session_id}", response_model=TeacherSessionSummary)
+def update_teacher_session(
+    session_id: str,
+    req: UpdateTeacherSessionRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> TeacherSessionSummary:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.update_teacher_session(
+            session_id=session_id,
+            player_name=req.player_name,
+            city=req.city,
+            status=req.status,
+            day=req.day,
+            cash=req.cash,
+            tax_reserve=req.tax_reserve,
+            debt=req.debt,
+            stress=req.stress,
+            score=req.score,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/teacher/sessions/{session_id}", response_model=ActionResponse)
+def delete_teacher_session(
+    session_id: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.delete_teacher_session(session_id=session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/teacher/sessions/bulk-delete", response_model=ActionResponse)
+def bulk_delete_teacher_sessions(
+    req: BulkDeleteRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    return repo.bulk_delete_sessions(session_ids=req.ids)
 
 
 @app.post("/api/strategy/start", response_model=StrategyPublicState)
@@ -339,3 +476,154 @@ def teacher_strategy_leaderboard(
     safe_limit = max(1, min(limit, 200))
     repo = GameRepository(db)
     return repo.strategy_leaderboard(limit=safe_limit)
+
+
+@app.get("/api/teacher/strategy/sessions/{session_id}", response_model=StrategySessionReview)
+def teacher_strategy_session_review(
+    session_id: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> StrategySessionReview:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    review = repo.strategy_session_review(session_id=session_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail="Strategy session not found")
+    return review
+
+
+@app.delete("/api/teacher/strategy/sessions/{session_id}", response_model=ActionResponse)
+def teacher_delete_strategy_session(
+    session_id: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.delete_strategy_session(session_id=session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/teacher/strategy/sessions/bulk-delete", response_model=ActionResponse)
+def teacher_bulk_delete_strategy_sessions(
+    req: BulkDeleteRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    return repo.bulk_delete_strategy_sessions(session_ids=req.ids)
+
+
+@app.get("/api/teacher/trash", response_model=list[DeletedEntitySummary])
+def teacher_list_trash(
+    limit: int = 200,
+    entity_type: str | None = None,
+    since_days: int | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[DeletedEntitySummary]:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    safe_limit = max(1, min(limit, 500))
+    safe_since_days = None if since_days is None else max(1, min(since_days, 3650))
+    parsed_from = _parse_iso_datetime(from_date, "from_date")
+    parsed_to = _parse_iso_datetime(to_date, "to_date")
+    return repo.list_deleted_entities(
+        limit=safe_limit,
+        entity_type=entity_type,
+        since_days=safe_since_days,
+        from_date=parsed_from,
+        to_date=parsed_to,
+    )
+
+
+@app.post("/api/teacher/trash/{archive_id}/restore", response_model=ActionResponse)
+def teacher_restore_from_trash(
+    archive_id: int,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.restore_deleted_entity(archive_id=archive_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/teacher/trash/bulk-restore", response_model=ActionResponse)
+def teacher_bulk_restore_from_trash(
+    req: BulkArchiveRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    return repo.bulk_restore_deleted_entities(archive_ids=req.ids)
+
+
+@app.post("/api/teacher/trash/purge", response_model=ActionResponse)
+def teacher_purge_trash(
+    req: BulkArchiveRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    return repo.purge_deleted_entities(archive_ids=req.ids)
+
+
+@app.post("/api/teacher/trash/purge-older", response_model=ActionResponse)
+def teacher_purge_trash_older(
+    req: PurgeOlderRequest,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    return repo.purge_deleted_entities_older_than(days=req.days)
+
+
+@app.get("/api/teacher/audit", response_model=list[AuditEventSummary])
+def teacher_audit_events(
+    limit: int = 300,
+    action: str | None = None,
+    target_type: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[AuditEventSummary]:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    safe_limit = max(1, min(limit, 1000))
+    return repo.list_audit_events(
+        limit=safe_limit,
+        action=action,
+        target_type=target_type,
+        from_date=_parse_iso_datetime(from_date, "from_date"),
+        to_date=_parse_iso_datetime(to_date, "to_date"),
+    )
+
+
+@app.get("/api/teacher/risk-alerts", response_model=list[TeacherRiskAlert])
+def teacher_risk_alerts(
+    limit: int = 100,
+    class_code: str | None = None,
+    assignment_code: str | None = None,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[TeacherRiskAlert]:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    safe_limit = max(1, min(limit, 300))
+    return repo.teacher_risk_alerts(
+        limit=safe_limit,
+        class_code=class_code,
+        assignment_code=assignment_code,
+    )

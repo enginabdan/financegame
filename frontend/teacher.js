@@ -5,6 +5,16 @@ const loadRubricBtn = document.getElementById("loadRubricBtn");
 const exportSessionsCsvBtn = document.getElementById("exportSessionsCsvBtn");
 const exportLogsCsvBtn = document.getElementById("exportLogsCsvBtn");
 const loadStrategyLeaderboardBtn = document.getElementById("loadStrategyLeaderboardBtn");
+const applyFiltersBtn = document.getElementById("applyFiltersBtn");
+const clearFiltersBtn = document.getElementById("clearFiltersBtn");
+const bulkDeleteSessionsBtn = document.getElementById("bulkDeleteSessionsBtn");
+const bulkDeleteStrategyBtn = document.getElementById("bulkDeleteStrategyBtn");
+const loadTrashBtn = document.getElementById("loadTrashBtn");
+const bulkRestoreTrashBtn = document.getElementById("bulkRestoreTrashBtn");
+const purgeTrashBtn = document.getElementById("purgeTrashBtn");
+const purgeOlderTrashBtn = document.getElementById("purgeOlderTrashBtn");
+const loadRiskAlertsBtn = document.getElementById("loadRiskAlertsBtn");
+const loadAuditBtn = document.getElementById("loadAuditBtn");
 
 const overviewEl = document.getElementById("overview");
 const sessionsEl = document.getElementById("sessions");
@@ -13,6 +23,13 @@ const classListEl = document.getElementById("classList");
 const assignmentListEl = document.getElementById("assignmentList");
 const rubricListEl = document.getElementById("rubricList");
 const strategyLeaderboardEl = document.getElementById("strategyLeaderboard");
+const strategySessionReviewEl = document.getElementById("strategySessionReview");
+const trashListEl = document.getElementById("trashList");
+const riskAlertsListEl = document.getElementById("riskAlertsList");
+const auditLogListEl = document.getElementById("auditLogList");
+const trashEntityTypeFilter = document.getElementById("trashEntityTypeFilter");
+const trashSinceDaysFilter = document.getElementById("trashSinceDaysFilter");
+const trashPurgeOlderDays = document.getElementById("trashPurgeOlderDays");
 
 const apiBaseInput = document.getElementById("apiBase");
 const teacherKeyInput = document.getElementById("teacherKey");
@@ -25,16 +42,48 @@ const assignCityInput = document.getElementById("assignCityInput");
 const assignStartCashInput = document.getElementById("assignStartCashInput");
 const assignDurationInput = document.getElementById("assignDurationInput");
 const rubricAssignmentCodeInput = document.getElementById("rubricAssignmentCodeInput");
+const filterPlayerNameInput = document.getElementById("filterPlayerName");
+const filterClassCodeInput = document.getElementById("filterClassCode");
+const filterAssignmentCodeInput = document.getElementById("filterAssignmentCode");
+const filterSessionStatusInput = document.getElementById("filterSessionStatus");
+const riskClassCodeInput = document.getElementById("riskClassCode");
+const riskAssignmentCodeInput = document.getElementById("riskAssignmentCode");
+const trashFromDateInput = document.getElementById("trashFromDate");
+const trashToDateInput = document.getElementById("trashToDate");
+const auditActionFilterInput = document.getElementById("auditActionFilter");
+const auditTargetTypeFilterInput = document.getElementById("auditTargetTypeFilter");
+const auditFromDateInput = document.getElementById("auditFromDate");
+const auditToDateInput = document.getElementById("auditToDate");
 
 const defaultApiBase = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000";
 const STORAGE_API_BASE = "financegame_teacher_api_base";
 const STORAGE_TEACHER_KEY = "financegame_teacher_key";
 const STORAGE_REMEMBER = "financegame_teacher_remember";
+
 let currentSessions = [];
 let currentSelectedLogs = [];
+let currentClasses = [];
+let currentAssignments = [];
+let currentStrategyRows = [];
+let allSessions = [];
+let allStrategyRows = [];
+let selectedStrategySessionId = null;
+const selectedSessionIds = new Set();
+const selectedStrategyIds = new Set();
+const selectedTrashIds = new Set();
 
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
+}
+
+function getAccess(requireKey = true) {
+  const apiBase = apiBaseInput.value.trim();
+  const teacherKey = teacherKeyInput.value.trim();
+  if (requireKey && !teacherKey) {
+    alert("Teacher key is required");
+    return null;
+  }
+  return { apiBase, teacherKey };
 }
 
 function renderOverview(overview) {
@@ -56,6 +105,7 @@ function renderOverview(overview) {
 }
 
 function renderClasses(classes) {
+  currentClasses = classes;
   classListEl.innerHTML = "";
   if (!classes.length) {
     classListEl.innerHTML = '<article class="log-item">No classes created yet.</article>';
@@ -69,16 +119,19 @@ function renderClasses(classes) {
       <strong>${cls.class_name}</strong>
       <p class="meta">Class Code: <strong>${cls.class_code}</strong></p>
       <p class="meta">Assignments: ${cls.assignment_count} (Active: ${cls.active_assignment_count})</p>
-      <p class="meta">
-        <button data-copy="${cls.class_code}" data-kind="class">Copy Class Code</button>
-        <button data-use-class="${cls.class_code}" data-kind="class">Use in Assignment Form</button>
-      </p>
+      <div class="actions-row">
+        <button data-action="copy-class" data-class-code="${cls.class_code}" class="secondary">Copy Class Code</button>
+        <button data-action="use-class" data-class-code="${cls.class_code}">Use in Assignment Form</button>
+        <button data-action="edit-class" data-class-code="${cls.class_code}" class="warn">Edit Name</button>
+        <button data-action="delete-class" data-class-code="${cls.class_code}" class="danger">Delete Class</button>
+      </div>
     `;
     classListEl.appendChild(card);
   }
 }
 
 function renderAssignments(assignments) {
+  currentAssignments = assignments;
   assignmentListEl.innerHTML = "";
   if (!assignments.length) {
     assignmentListEl.innerHTML = '<article class="log-item">No assignments created yet.</article>';
@@ -92,19 +145,27 @@ function renderAssignments(assignments) {
       <strong>${item.title}</strong>
       <p class="meta">Class: ${item.class_code} | Assignment Code: <strong>${item.assignment_code}</strong></p>
       <p class="meta">City: ${item.city} | Start Cash: ${money(item.start_cash)} | Duration: ${item.duration_days} days</p>
-      <p class="meta">Enrolled Students: ${item.enrolled_sessions}</p>
-      <p class="meta">
-        <button data-copy="${item.class_code}" data-kind="assignment">Copy Class Code</button>
-        <button data-copy="${item.assignment_code}" data-kind="assignment">Copy Assignment Code</button>
-      </p>
+      <p class="meta">Enrolled Students: ${item.enrolled_sessions} | Active: ${item.is_active ? "Yes" : "No"}</p>
+      <div class="actions-row">
+        <button data-action="copy-assign-class" data-value="${item.class_code}" class="secondary">Copy Class Code</button>
+        <button data-action="copy-assign-code" data-value="${item.assignment_code}" class="secondary">Copy Assignment Code</button>
+        <button data-action="edit-assignment" data-assignment-code="${item.assignment_code}" class="warn">Edit Assignment</button>
+        <button data-action="toggle-assignment" data-assignment-code="${item.assignment_code}" data-assignment-active="${item.is_active}">${item.is_active ? "Deactivate" : "Activate"}</button>
+        <button data-action="delete-assignment" data-assignment-code="${item.assignment_code}" class="danger">Delete Assignment</button>
+      </div>
     `;
     assignmentListEl.appendChild(card);
   }
 }
 
-function renderSessions(sessions, apiBase, teacherKey) {
+function renderSessions(sessions) {
   currentSessions = sessions;
   sessionsEl.innerHTML = "";
+
+  if (!sessions.length) {
+    sessionsEl.innerHTML = '<article class="log-item">No sessions yet.</article>';
+    return;
+  }
 
   for (const row of sessions) {
     const classMeta = row.class_code ? ` | Class: ${row.class_code}` : "";
@@ -116,11 +177,14 @@ function renderSessions(sessions, apiBase, teacherKey) {
       <strong>${row.player_name} (${row.city})</strong>
       <p class="meta">Session: ${row.session_id}</p>
       <p class="meta">Status: ${row.status} | Day: ${row.day} | Cash: ${money(row.cash)} | Score: ${row.score}${classMeta}${assignMeta}</p>
-      <button data-session-id="${row.session_id}">View Day Logs</button>
+      <div class="actions-row">
+        <label class="inline-check"><input type="checkbox" data-action="select-session" data-session-id="${row.session_id}" ${selectedSessionIds.has(row.session_id) ? "checked" : ""} /> Select</label>
+        <button data-action="view-logs" data-session-id="${row.session_id}">View Day Logs</button>
+        <button data-action="edit-session" data-session-id="${row.session_id}" class="warn">Edit Session</button>
+        <button data-action="delete-session" data-session-id="${row.session_id}" class="danger">Delete Session</button>
+      </div>
     `;
 
-    const btn = card.querySelector("button");
-    btn.addEventListener("click", () => loadSessionLogs(apiBase, teacherKey, row.session_id));
     sessionsEl.appendChild(card);
   }
 }
@@ -128,6 +192,11 @@ function renderSessions(sessions, apiBase, teacherKey) {
 function renderLogs(logs) {
   currentSelectedLogs = logs;
   logsEl.innerHTML = "";
+
+  if (!logs.length) {
+    logsEl.innerHTML = '<article class="log-item">No day logs found for this session.</article>';
+    return;
+  }
 
   for (const row of logs) {
     const card = document.createElement("article");
@@ -164,6 +233,7 @@ function renderRubric(rows) {
 }
 
 function renderStrategyLeaderboard(rows) {
+  currentStrategyRows = rows;
   if (!strategyLeaderboardEl) {
     return;
   }
@@ -181,9 +251,164 @@ function renderStrategyLeaderboard(rows) {
       <p class="meta">Progress: Day ${row.current_day}/${row.total_days} | Success: ${row.success_percentage}%</p>
       <p class="meta">Profit: ${money(row.total_profit)} | Optimal: ${money(row.optimal_profit)}</p>
       <p class="meta">Session: ${row.session_id}</p>
+      <div class="actions-row">
+        <label class="inline-check"><input type="checkbox" data-action="select-strategy" data-session-id="${row.session_id}" ${selectedStrategyIds.has(row.session_id) ? "checked" : ""} /> Select</label>
+        <button data-action="view-strategy" data-session-id="${row.session_id}">View Full Decisions</button>
+        <button data-action="delete-strategy" data-session-id="${row.session_id}" class="danger">Delete Sprint Session</button>
+      </div>
     `;
     strategyLeaderboardEl.appendChild(card);
   }
+}
+
+function renderStrategySessionReview(review) {
+  if (!strategySessionReviewEl) {
+    return;
+  }
+
+  strategySessionReviewEl.innerHTML = "";
+  if (!review) {
+    strategySessionReviewEl.innerHTML = '<article class="log-item">Select a sprint session to see all offers and decisions.</article>';
+    return;
+  }
+
+  const summary = document.createElement("article");
+  summary.className = "log-item";
+  summary.innerHTML = `
+    <strong>${review.player_name} - Sprint Review</strong>
+    <p class="meta">Session: ${review.session_id}</p>
+    <p class="meta">Status: ${review.status} | Progress: Day ${review.current_day}/${review.total_days}</p>
+    <p class="meta">Total Profit: ${money(review.total_profit)} | Optimal: ${money(review.optimal_profit)} | Success: ${review.success_percentage}%</p>
+    <p class="meta">Selected Decisions: ${review.selected_count}</p>
+  `;
+  strategySessionReviewEl.appendChild(summary);
+
+  if (!review.decisions.length) {
+    const empty = document.createElement("article");
+    empty.className = "log-item";
+    empty.textContent = "No decisions have been made yet in this sprint session.";
+    strategySessionReviewEl.appendChild(empty);
+    return;
+  }
+
+  for (const decision of review.decisions) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+
+    const offersList = decision.offers
+      .map((offer) => {
+        const selected = offer.offer_id === decision.chosen_offer_id ? " (Chosen)" : "";
+        return `<li>${offer.title}${selected} - Expected: ${money(offer.expected_profit)} | In: ${money(offer.cash_in)} | Out: ${money(offer.cash_out)} | ${offer.channel} | ${offer.risk}</li>`;
+      })
+      .join("");
+
+    card.innerHTML = `
+      <strong>Day ${decision.day}: ${decision.chosen_offer_title}</strong>
+      <p class="meta">Chosen Profit: ${money(decision.chosen_profit)} | Best Possible: ${money(decision.optimal_profit)} | Missed: ${money(decision.gap_to_optimal)}</p>
+      <p class="meta">Brief: ${decision.day_brief || "-"}</p>
+      <details>
+        <summary>Show all offered options for this day</summary>
+        <ul>${offersList}</ul>
+      </details>
+    `;
+    strategySessionReviewEl.appendChild(card);
+  }
+}
+
+function renderTrash(items) {
+  if (!trashListEl) {
+    return;
+  }
+  trashListEl.innerHTML = "";
+  if (!items.length) {
+    trashListEl.innerHTML = '<article class="log-item">Trash is empty.</article>';
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    card.innerHTML = `
+      <strong>${item.entity_type}</strong>
+      <p class="meta">Key: ${item.entity_key}</p>
+      <p class="meta">Deleted At: ${new Date(item.deleted_at).toLocaleString()}</p>
+      <div class="actions-row">
+        <label class="inline-check"><input type="checkbox" data-action="select-trash" data-trash-id="${item.id}" ${selectedTrashIds.has(item.id) ? "checked" : ""} /> Select</label>
+        <button data-action="restore-trash" data-trash-id="${item.id}" class="secondary">Restore</button>
+      </div>
+    `;
+    trashListEl.appendChild(card);
+  }
+}
+
+function riskColorClass(level) {
+  if (level === "critical") return "danger";
+  if (level === "high") return "warn";
+  if (level === "medium") return "secondary";
+  return "";
+}
+
+function renderRiskAlerts(items) {
+  if (!riskAlertsListEl) {
+    return;
+  }
+  riskAlertsListEl.innerHTML = "";
+  if (!items.length) {
+    riskAlertsListEl.innerHTML = '<article class="log-item">No medium/high risk sessions found.</article>';
+    return;
+  }
+  for (const row of items) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    const reasons = (row.reasons || []).join(", ");
+    card.innerHTML = `
+      <strong>${row.player_name} (${row.risk_level.toUpperCase()})</strong>
+      <p class="meta">Risk Score: ${row.risk_score} | Status: ${row.status} | Day: ${row.day}</p>
+      <p class="meta">Cash: ${money(row.cash)} | Debt: ${money(row.debt)} | Stress: ${row.stress} | Score: ${row.score}</p>
+      <p class="meta">Class: ${row.class_code || "-"} | Assignment: ${row.assignment_code || "-"}</p>
+      <p class="meta">Reasons: ${reasons || "-"}</p>
+      <div class="actions-row">
+        <button data-action="view-risk-session-logs" data-session-id="${row.session_id}" class="${riskColorClass(row.risk_level)}">View Session Logs</button>
+      </div>
+    `;
+    riskAlertsListEl.appendChild(card);
+  }
+}
+
+function renderAuditLog(items) {
+  if (!auditLogListEl) {
+    return;
+  }
+  auditLogListEl.innerHTML = "";
+  if (!items.length) {
+    auditLogListEl.innerHTML = '<article class="log-item">No audit records found for selected filters.</article>';
+    return;
+  }
+  for (const row of items) {
+    const card = document.createElement("article");
+    card.className = "log-item";
+    card.innerHTML = `
+      <strong>${row.action}</strong>
+      <p class="meta">Target: ${row.target_type} / ${row.target_key}</p>
+      <p class="meta">Actor: ${row.actor} | Time: ${new Date(row.created_at).toLocaleString()}</p>
+    `;
+    auditLogListEl.appendChild(card);
+  }
+}
+
+function applySessionFilters() {
+  const player = (filterPlayerNameInput?.value || "").trim().toLowerCase();
+  const classCode = (filterClassCodeInput?.value || "").trim().toUpperCase();
+  const assignmentCode = (filterAssignmentCodeInput?.value || "").trim().toUpperCase();
+  const status = (filterSessionStatusInput?.value || "").trim().toLowerCase();
+
+  const filtered = allSessions.filter((row) => {
+    if (player && !row.player_name.toLowerCase().includes(player)) return false;
+    if (classCode && (row.class_code || "").toUpperCase() !== classCode) return false;
+    if (assignmentCode && (row.assignment_code || "").toUpperCase() !== assignmentCode) return false;
+    if (status && (row.status || "").toLowerCase() !== status) return false;
+    return true;
+  });
+  renderSessions(filtered);
 }
 
 async function fetchJson(url, teacherKey, options = {}) {
@@ -235,13 +460,11 @@ async function loadClassAndAssignments(apiBase, teacherKey) {
 }
 
 async function loadDashboard() {
-  const apiBase = apiBaseInput.value.trim();
-  const teacherKey = teacherKeyInput.value;
-
-  if (!teacherKey) {
-    alert("Teacher key is required");
+  const access = getAccess(true);
+  if (!access) {
     return;
   }
+  const { apiBase, teacherKey } = access;
 
   persistAccess(apiBase, teacherKey);
 
@@ -252,9 +475,14 @@ async function loadDashboard() {
     ]);
 
     renderOverview(overview);
-    renderSessions(sessions, apiBase, teacherKey);
+    allSessions = sessions;
+    applySessionFilters();
     await loadClassAndAssignments(apiBase, teacherKey);
     await loadStrategyLeaderboard();
+    await loadTrash();
+    await loadRiskAlerts();
+    await loadAuditLog();
+    renderStrategySessionReview(null);
     logsEl.innerHTML = "";
   } catch (err) {
     alert(err.message || "Failed to load dashboard");
@@ -263,7 +491,7 @@ async function loadDashboard() {
 
 async function loadSessionLogs(apiBase, teacherKey, sessionId) {
   try {
-    const logs = await fetchJson(`${apiBase}/api/teacher/sessions/${sessionId}/logs?limit=30`, teacherKey);
+    const logs = await fetchJson(`${apiBase}/api/teacher/sessions/${sessionId}/logs?limit=90`, teacherKey);
     renderLogs(logs);
   } catch (err) {
     alert(err.message || "Failed to load session logs");
@@ -271,14 +499,13 @@ async function loadSessionLogs(apiBase, teacherKey, sessionId) {
 }
 
 async function loadAssignmentRubric() {
-  const apiBase = apiBaseInput.value.trim();
-  const teacherKey = teacherKeyInput.value;
-  const assignmentCode = rubricAssignmentCodeInput.value.trim().toUpperCase();
-
-  if (!teacherKey) {
-    alert("Teacher key is required");
+  const access = getAccess(true);
+  if (!access) {
     return;
   }
+  const { apiBase, teacherKey } = access;
+  const assignmentCode = rubricAssignmentCodeInput.value.trim().toUpperCase();
+
   if (!assignmentCode) {
     alert("Assignment code is required");
     return;
@@ -293,24 +520,131 @@ async function loadAssignmentRubric() {
 }
 
 async function loadStrategyLeaderboard() {
-  const apiBase = apiBaseInput.value.trim();
-  const teacherKey = teacherKeyInput.value;
-  if (!teacherKey) {
+  const access = getAccess(true);
+  if (!access) {
     return;
   }
+  const { apiBase, teacherKey } = access;
 
   try {
     const rows = await fetchJson(`${apiBase}/api/teacher/strategy/leaderboard?limit=100`, teacherKey);
-    renderStrategyLeaderboard(rows);
+    allStrategyRows = rows;
+    renderStrategyLeaderboard(allStrategyRows);
   } catch (err) {
     console.error(err);
   }
 }
 
+async function loadTrash() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  try {
+    const params = new URLSearchParams();
+    params.set("limit", "200");
+    const entityType = (trashEntityTypeFilter?.value || "").trim();
+    const sinceDaysRaw = Number(trashSinceDaysFilter?.value || 0);
+    if (entityType) {
+      params.set("entity_type", entityType);
+    }
+    if (Number.isFinite(sinceDaysRaw) && sinceDaysRaw > 0) {
+      params.set("since_days", String(Math.round(sinceDaysRaw)));
+    }
+    const fromDate = (trashFromDateInput?.value || "").trim();
+    const toDate = (trashToDateInput?.value || "").trim();
+    if (fromDate) {
+      params.set("from_date", new Date(fromDate).toISOString());
+    }
+    if (toDate) {
+      params.set("to_date", new Date(toDate).toISOString());
+    }
+    const items = await fetchJson(`${apiBase}/api/teacher/trash?${params.toString()}`, teacherKey);
+    renderTrash(items);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function loadRiskAlerts() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  try {
+    const params = new URLSearchParams();
+    params.set("limit", "150");
+    const classCode = (riskClassCodeInput?.value || "").trim().toUpperCase();
+    const assignmentCode = (riskAssignmentCodeInput?.value || "").trim().toUpperCase();
+    if (classCode) {
+      params.set("class_code", classCode);
+    }
+    if (assignmentCode) {
+      params.set("assignment_code", assignmentCode);
+    }
+    const items = await fetchJson(`${apiBase}/api/teacher/risk-alerts?${params.toString()}`, teacherKey);
+    renderRiskAlerts(items);
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "Failed to load risk alerts");
+  }
+}
+
+async function loadAuditLog() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  try {
+    const params = new URLSearchParams();
+    params.set("limit", "500");
+    const action = (auditActionFilterInput?.value || "").trim();
+    const targetType = (auditTargetTypeFilterInput?.value || "").trim();
+    const fromDate = (auditFromDateInput?.value || "").trim();
+    const toDate = (auditToDateInput?.value || "").trim();
+    if (action) {
+      params.set("action", action);
+    }
+    if (targetType) {
+      params.set("target_type", targetType);
+    }
+    if (fromDate) {
+      params.set("from_date", new Date(fromDate).toISOString());
+    }
+    if (toDate) {
+      params.set("to_date", new Date(toDate).toISOString());
+    }
+    const items = await fetchJson(`${apiBase}/api/teacher/audit?${params.toString()}`, teacherKey);
+    renderAuditLog(items);
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "Failed to load audit log");
+  }
+}
+
+async function loadStrategySessionReview(sessionId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+
+  try {
+    const review = await fetchJson(`${apiBase}/api/teacher/strategy/sessions/${sessionId}`, teacherKey);
+    selectedStrategySessionId = sessionId;
+    renderStrategySessionReview(review);
+  } catch (err) {
+    alert(err.message || "Failed to load strategy session review");
+  }
+}
+
 function toCsvValue(value) {
   const text = String(value ?? "");
-  if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
-    return `"${text.replaceAll("\"", "\"\"")}"`;
+  if (text.includes(",") || text.includes('"') || text.includes("\n")) {
+    return `"${text.replaceAll('"', '""')}"`;
   }
   return text;
 }
@@ -391,14 +725,13 @@ function exportLogsCsv() {
 }
 
 async function createClassroom() {
-  const apiBase = apiBaseInput.value.trim();
-  const teacherKey = teacherKeyInput.value;
-  const className = classNameInput.value.trim();
-
-  if (!teacherKey) {
-    alert("Teacher key is required");
+  const access = getAccess(true);
+  if (!access) {
     return;
   }
+  const { apiBase, teacherKey } = access;
+  const className = classNameInput.value.trim();
+
   if (!className) {
     alert("Class name is required");
     return;
@@ -423,8 +756,11 @@ async function createClassroom() {
 }
 
 async function createAssignment() {
-  const apiBase = apiBaseInput.value.trim();
-  const teacherKey = teacherKeyInput.value;
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
 
   const classCode = assignClassCodeInput.value.trim().toUpperCase();
   const title = assignTitleInput.value.trim();
@@ -432,10 +768,6 @@ async function createAssignment() {
   const startCash = Number(assignStartCashInput.value || 1800);
   const durationDays = Number(assignDurationInput.value || 30);
 
-  if (!teacherKey) {
-    alert("Teacher key is required");
-    return;
-  }
   if (!classCode || !title) {
     alert("Class code and assignment title are required");
     return;
@@ -461,6 +793,426 @@ async function createAssignment() {
     alert(`Assignment created. Code: ${assignment.assignment_code}`);
   } catch (err) {
     alert(err.message || "Failed to create assignment");
+  }
+}
+
+async function updateClassroom(classCode) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const existing = currentClasses.find((row) => row.class_code === classCode);
+  const nextName = prompt("New class name", existing?.class_name || "");
+  if (nextName === null) {
+    return;
+  }
+  const clean = nextName.trim();
+  if (!clean) {
+    alert("Class name cannot be empty.");
+    return;
+  }
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/classes/${classCode}`, teacherKey, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ class_name: clean }),
+    });
+    await loadClassAndAssignments(apiBase, teacherKey);
+  } catch (err) {
+    alert(err.message || "Failed to update class");
+  }
+}
+
+async function deleteClassroom(classCode) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+
+  const ok = confirm(`Delete class ${classCode}? This also deletes related assignments and enrollments.`);
+  if (!ok) {
+    return;
+  }
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/classes/${classCode}`, teacherKey, { method: "DELETE" });
+    await loadClassAndAssignments(apiBase, teacherKey);
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to delete class");
+  }
+}
+
+async function editAssignment(assignmentCode) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const existing = currentAssignments.find((row) => row.assignment_code === assignmentCode);
+  if (!existing) {
+    alert("Assignment not found in current list.");
+    return;
+  }
+
+  const title = prompt("Assignment title", existing.title);
+  if (title === null) {
+    return;
+  }
+  const city = prompt("City", existing.city);
+  if (city === null) {
+    return;
+  }
+  const startCashRaw = prompt("Start cash", String(existing.start_cash));
+  if (startCashRaw === null) {
+    return;
+  }
+  const durationRaw = prompt("Duration days", String(existing.duration_days));
+  if (durationRaw === null) {
+    return;
+  }
+
+  const startCash = Number(startCashRaw);
+  const durationDays = Number(durationRaw);
+  if (!Number.isFinite(startCash) || !Number.isFinite(durationDays)) {
+    alert("Start cash and duration must be numeric.");
+    return;
+  }
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/assignments/${assignmentCode}`, teacherKey, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: title.trim(),
+        city: city.trim(),
+        start_cash: startCash,
+        duration_days: Math.round(durationDays),
+      }),
+    });
+    await loadClassAndAssignments(apiBase, teacherKey);
+  } catch (err) {
+    alert(err.message || "Failed to update assignment");
+  }
+}
+
+async function toggleAssignment(assignmentCode, currentActive) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/assignments/${assignmentCode}`, teacherKey, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !currentActive }),
+    });
+    await loadClassAndAssignments(apiBase, teacherKey);
+  } catch (err) {
+    alert(err.message || "Failed to toggle assignment status");
+  }
+}
+
+async function deleteAssignment(assignmentCode) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+
+  const ok = confirm(`Delete assignment ${assignmentCode}?`);
+  if (!ok) {
+    return;
+  }
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/assignments/${assignmentCode}`, teacherKey, { method: "DELETE" });
+    await loadClassAndAssignments(apiBase, teacherKey);
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to delete assignment");
+  }
+}
+
+async function editSession(sessionId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const existing = currentSessions.find((row) => row.session_id === sessionId);
+  if (!existing) {
+    alert("Session not found.");
+    return;
+  }
+
+  const playerName = prompt("Player name", existing.player_name);
+  if (playerName === null) {
+    return;
+  }
+  const city = prompt("City", existing.city);
+  if (city === null) {
+    return;
+  }
+  const status = prompt("Status (active/completed/failed)", existing.status);
+  if (status === null) {
+    return;
+  }
+  const dayRaw = prompt("Day", String(existing.day));
+  if (dayRaw === null) {
+    return;
+  }
+  const cashRaw = prompt("Cash", String(existing.cash));
+  if (cashRaw === null) {
+    return;
+  }
+  const stressRaw = prompt("Stress (0-100)", String(existing.stress));
+  if (stressRaw === null) {
+    return;
+  }
+  const scoreRaw = prompt("Score (0-100)", String(existing.score));
+  if (scoreRaw === null) {
+    return;
+  }
+
+  const day = Number(dayRaw);
+  const cash = Number(cashRaw);
+  const stress = Number(stressRaw);
+  const score = Number(scoreRaw);
+  if (![day, cash, stress, score].every(Number.isFinite)) {
+    alert("Day, cash, stress, and score must be numeric.");
+    return;
+  }
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/sessions/${sessionId}`, teacherKey, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        player_name: playerName.trim(),
+        city: city.trim(),
+        status: status.trim().toLowerCase(),
+        day: Math.round(day),
+        cash,
+        stress: Math.round(stress),
+        score: Math.round(score),
+      }),
+    });
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to update session");
+  }
+}
+
+async function deleteSession(sessionId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+
+  const ok = confirm(`Delete session ${sessionId}? This also removes daily logs.`);
+  if (!ok) {
+    return;
+  }
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/sessions/${sessionId}`, teacherKey, { method: "DELETE" });
+    logsEl.innerHTML = "";
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to delete session");
+  }
+}
+
+async function deleteStrategySession(sessionId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+
+  const ok = confirm(`Delete sprint session ${sessionId}? This removes all decision history for this sprint run.`);
+  if (!ok) {
+    return;
+  }
+
+  try {
+    await fetchJson(`${apiBase}/api/teacher/strategy/sessions/${sessionId}`, teacherKey, { method: "DELETE" });
+    if (selectedStrategySessionId === sessionId) {
+      selectedStrategySessionId = null;
+      renderStrategySessionReview(null);
+    }
+    await loadStrategyLeaderboard();
+  } catch (err) {
+    alert(err.message || "Failed to delete sprint session");
+  }
+}
+
+async function bulkDeleteSessions() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const ids = Array.from(selectedSessionIds);
+  if (!ids.length) {
+    alert("Select at least one session.");
+    return;
+  }
+  const ok = confirm(`Delete ${ids.length} selected sessions?`);
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/sessions/bulk-delete`, teacherKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    selectedSessionIds.clear();
+    logsEl.innerHTML = "";
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to bulk delete sessions");
+  }
+}
+
+async function bulkDeleteStrategySessions() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const ids = Array.from(selectedStrategyIds);
+  if (!ids.length) {
+    alert("Select at least one sprint session.");
+    return;
+  }
+  const ok = confirm(`Delete ${ids.length} selected sprint sessions?`);
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/strategy/sessions/bulk-delete`, teacherKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    selectedStrategyIds.clear();
+    if (selectedStrategySessionId && ids.includes(selectedStrategySessionId)) {
+      selectedStrategySessionId = null;
+      renderStrategySessionReview(null);
+    }
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to bulk delete sprint sessions");
+  }
+}
+
+async function restoreTrashItem(trashId) {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  try {
+    await fetchJson(`${apiBase}/api/teacher/trash/${trashId}/restore`, teacherKey, {
+      method: "POST",
+    });
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to restore archived record");
+  }
+}
+
+async function bulkRestoreTrashItems() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const ids = Array.from(selectedTrashIds);
+  if (!ids.length) {
+    alert("Select at least one trash record.");
+    return;
+  }
+  const ok = confirm(`Restore ${ids.length} selected archived record(s)?`);
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/trash/bulk-restore`, teacherKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    selectedTrashIds.clear();
+    await loadDashboard();
+  } catch (err) {
+    alert(err.message || "Failed to bulk restore trash items");
+  }
+}
+
+async function purgeTrashItems() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const ids = Array.from(selectedTrashIds);
+  if (!ids.length) {
+    alert("Select at least one trash record.");
+    return;
+  }
+  const ok = confirm(`Permanently delete ${ids.length} selected archived record(s)? This cannot be undone.`);
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/trash/purge`, teacherKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    selectedTrashIds.clear();
+    await loadTrash();
+  } catch (err) {
+    alert(err.message || "Failed to purge trash items");
+  }
+}
+
+async function purgeOlderTrashItems() {
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+  const { apiBase, teacherKey } = access;
+  const days = Number(trashPurgeOlderDays?.value || 0);
+  if (!Number.isFinite(days) || days < 1) {
+    alert("Enter a valid number of days (>=1).");
+    return;
+  }
+  const safeDays = Math.round(days);
+  const ok = confirm(`Permanently delete trash records older than ${safeDays} days?`);
+  if (!ok) {
+    return;
+  }
+  try {
+    await fetchJson(`${apiBase}/api/teacher/trash/purge-older`, teacherKey, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: safeDays }),
+    });
+    selectedTrashIds.clear();
+    await loadTrash();
+  } catch (err) {
+    alert(err.message || "Failed to purge old trash records");
   }
 }
 
@@ -515,6 +1267,63 @@ if (loadStrategyLeaderboardBtn) {
 
 exportSessionsCsvBtn.addEventListener("click", exportSessionsCsv);
 exportLogsCsvBtn.addEventListener("click", exportLogsCsv);
+if (applyFiltersBtn) {
+  applyFiltersBtn.addEventListener("click", applySessionFilters);
+}
+if (clearFiltersBtn) {
+  clearFiltersBtn.addEventListener("click", () => {
+    filterPlayerNameInput.value = "";
+    filterClassCodeInput.value = "";
+    filterAssignmentCodeInput.value = "";
+    filterSessionStatusInput.value = "";
+    applySessionFilters();
+  });
+}
+if (bulkDeleteSessionsBtn) {
+  bulkDeleteSessionsBtn.addEventListener("click", () => {
+    bulkDeleteSessions().catch(() => {});
+  });
+}
+if (bulkDeleteStrategyBtn) {
+  bulkDeleteStrategyBtn.addEventListener("click", () => {
+    bulkDeleteStrategySessions().catch(() => {});
+  });
+}
+if (loadTrashBtn) {
+  loadTrashBtn.addEventListener("click", () => {
+    loadTrash().catch(() => {});
+  });
+}
+if (bulkRestoreTrashBtn) {
+  bulkRestoreTrashBtn.addEventListener("click", () => {
+    bulkRestoreTrashItems().catch(() => {});
+  });
+}
+if (purgeTrashBtn) {
+  purgeTrashBtn.addEventListener("click", () => {
+    purgeTrashItems().catch(() => {});
+  });
+}
+if (purgeOlderTrashBtn) {
+  purgeOlderTrashBtn.addEventListener("click", () => {
+    purgeOlderTrashItems().catch(() => {});
+  });
+}
+if (loadRiskAlertsBtn) {
+  loadRiskAlertsBtn.addEventListener("click", () => {
+    loadRiskAlerts().catch(() => {});
+  });
+}
+if (loadAuditBtn) {
+  loadAuditBtn.addEventListener("click", () => {
+    loadAuditLog().catch(() => {});
+  });
+}
+if (trashEntityTypeFilter) {
+  trashEntityTypeFilter.addEventListener("change", () => {
+    loadTrash().catch(() => {});
+  });
+}
 
 classListEl.addEventListener("click", (event) => {
   const target = event.target;
@@ -522,15 +1331,23 @@ classListEl.addEventListener("click", (event) => {
     return;
   }
 
-  const copyValue = target.getAttribute("data-copy");
-  if (copyValue) {
-    copyText(copyValue).catch(() => {});
+  const action = target.getAttribute("data-action");
+  const classCode = target.getAttribute("data-class-code");
+
+  if (action === "copy-class" && classCode) {
+    copyText(classCode).catch(() => {});
     return;
   }
-
-  const useClass = target.getAttribute("data-use-class");
-  if (useClass) {
-    assignClassCodeInput.value = useClass;
+  if (action === "use-class" && classCode) {
+    assignClassCodeInput.value = classCode;
+    return;
+  }
+  if (action === "edit-class" && classCode) {
+    updateClassroom(classCode).catch(() => {});
+    return;
+  }
+  if (action === "delete-class" && classCode) {
+    deleteClassroom(classCode).catch(() => {});
   }
 });
 
@@ -539,13 +1356,170 @@ assignmentListEl.addEventListener("click", (event) => {
   if (!(target instanceof HTMLButtonElement)) {
     return;
   }
-  const copyValue = target.getAttribute("data-copy");
-  if (copyValue) {
-    copyText(copyValue).catch(() => {});
+
+  const action = target.getAttribute("data-action");
+  const value = target.getAttribute("data-value");
+  const assignmentCode = target.getAttribute("data-assignment-code");
+
+  if ((action === "copy-assign-class" || action === "copy-assign-code") && value) {
+    copyText(value).catch(() => {});
+    return;
+  }
+  if (action === "edit-assignment" && assignmentCode) {
+    editAssignment(assignmentCode).catch(() => {});
+    return;
+  }
+  if (action === "toggle-assignment" && assignmentCode) {
+    const activeRaw = target.getAttribute("data-assignment-active") || "false";
+    toggleAssignment(assignmentCode, activeRaw === "true").catch(() => {});
+    return;
+  }
+  if (action === "delete-assignment" && assignmentCode) {
+    deleteAssignment(assignmentCode).catch(() => {});
   }
 });
 
+sessionsEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) {
+    return;
+  }
+  const action = target.getAttribute("data-action");
+  const sessionId = target.getAttribute("data-session-id");
+  if (!sessionId) {
+    return;
+  }
+
+  const access = getAccess(true);
+  if (!access) {
+    return;
+  }
+
+  if (action === "view-logs") {
+    loadSessionLogs(access.apiBase, access.teacherKey, sessionId).catch(() => {});
+    return;
+  }
+  if (action === "edit-session") {
+    editSession(sessionId).catch(() => {});
+    return;
+  }
+  if (action === "delete-session") {
+    deleteSession(sessionId).catch(() => {});
+  }
+});
+
+sessionsEl.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+    return;
+  }
+  const action = target.getAttribute("data-action");
+  const sessionId = target.getAttribute("data-session-id");
+  if (action !== "select-session" || !sessionId) {
+    return;
+  }
+  if (target.checked) {
+    selectedSessionIds.add(sessionId);
+  } else {
+    selectedSessionIds.delete(sessionId);
+  }
+});
+
+if (strategyLeaderboardEl) {
+  strategyLeaderboardEl.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+    const action = target.getAttribute("data-action");
+    const sessionId = target.getAttribute("data-session-id");
+    if (!sessionId) {
+      return;
+    }
+
+    if (action === "view-strategy") {
+      loadStrategySessionReview(sessionId).catch(() => {});
+      return;
+    }
+    if (action === "delete-strategy") {
+      deleteStrategySession(sessionId).catch(() => {});
+    }
+  });
+
+  strategyLeaderboardEl.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+      return;
+    }
+    const action = target.getAttribute("data-action");
+    const sessionId = target.getAttribute("data-session-id");
+    if (action !== "select-strategy" || !sessionId) {
+      return;
+    }
+    if (target.checked) {
+      selectedStrategyIds.add(sessionId);
+    } else {
+      selectedStrategyIds.delete(sessionId);
+    }
+  });
+}
+
+if (trashListEl) {
+  trashListEl.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+    const action = target.getAttribute("data-action");
+    const trashId = target.getAttribute("data-trash-id");
+    if (action === "restore-trash" && trashId) {
+      restoreTrashItem(Number(trashId)).catch(() => {});
+    }
+  });
+
+  trashListEl.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+      return;
+    }
+    const action = target.getAttribute("data-action");
+    const trashId = target.getAttribute("data-trash-id");
+    if (action !== "select-trash" || !trashId) {
+      return;
+    }
+    const parsed = Number(trashId);
+    if (Number.isNaN(parsed)) {
+      return;
+    }
+    if (target.checked) {
+      selectedTrashIds.add(parsed);
+    } else {
+      selectedTrashIds.delete(parsed);
+    }
+  });
+}
+
+if (riskAlertsListEl) {
+  riskAlertsListEl.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+    const action = target.getAttribute("data-action");
+    const sessionId = target.getAttribute("data-session-id");
+    if (action !== "view-risk-session-logs" || !sessionId) {
+      return;
+    }
+    const access = getAccess(true);
+    if (!access) {
+      return;
+    }
+    loadSessionLogs(access.apiBase, access.teacherKey, sessionId).catch(() => {});
+  });
+}
+
 restoreAccessFields();
+renderStrategySessionReview(null);
 
 setInterval(() => {
   if (teacherKeyInput.value.trim()) {

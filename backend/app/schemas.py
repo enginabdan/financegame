@@ -69,6 +69,10 @@ class CreateClassroomRequest(BaseModel):
     class_name: str = Field(min_length=2, max_length=120)
 
 
+class UpdateClassroomRequest(BaseModel):
+    class_name: str = Field(min_length=2, max_length=120)
+
+
 class ClassroomSummary(BaseModel):
     class_code: str
     class_name: str
@@ -83,6 +87,14 @@ class CreateAssignmentRequest(BaseModel):
     city: str = "Charlotte, NC"
     start_cash: float = Field(default=1800.0, ge=200, le=10000)
     duration_days: int = Field(default=30, ge=7, le=90)
+
+
+class UpdateAssignmentRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=120)
+    city: str | None = None
+    start_cash: float | None = Field(default=None, ge=200, le=10000)
+    duration_days: int | None = Field(default=None, ge=7, le=90)
+    is_active: bool | None = None
 
 
 class AssignmentSummary(BaseModel):
@@ -123,6 +135,18 @@ class TeacherSessionSummary(BaseModel):
     class_code: Optional[str] = None
     assignment_code: Optional[str] = None
     updated_at: datetime
+
+
+class UpdateTeacherSessionRequest(BaseModel):
+    player_name: str | None = Field(default=None, min_length=1, max_length=120)
+    city: str | None = Field(default=None, min_length=2, max_length=120)
+    status: Literal["active", "completed", "failed"] | None = None
+    day: int | None = Field(default=None, ge=1, le=120)
+    cash: float | None = Field(default=None, ge=-50000, le=500000)
+    tax_reserve: float | None = Field(default=None, ge=0, le=100000)
+    debt: float | None = Field(default=None, ge=0, le=100000)
+    stress: int | None = Field(default=None, ge=0, le=100)
+    score: int | None = Field(default=None, ge=0, le=100)
 
 
 class TeacherOverviewResponse(BaseModel):
@@ -210,3 +234,91 @@ class StrategyLeaderboardRow(BaseModel):
     success_percentage: float
     status: Literal["active", "completed"]
     updated_at: datetime
+
+
+class StrategyOfferReview(BaseModel):
+    offer_id: str
+    title: str
+    channel: str
+    cash_in: float
+    cash_out: float
+    expected_profit: float
+    risk: Literal["low", "medium", "high"] = "medium"
+
+
+class StrategyDecisionReview(BaseModel):
+    id: int
+    day: int
+    chosen_offer_id: str
+    chosen_offer_title: str
+    chosen_profit: float
+    optimal_profit: float
+    gap_to_optimal: float
+    day_brief: str
+    offers: list[StrategyOfferReview] = Field(default_factory=list)
+    created_at: datetime
+
+
+class StrategySessionReview(BaseModel):
+    session_id: str
+    player_name: str
+    current_day: int
+    total_days: int
+    assignment_minutes: int
+    status: Literal["active", "completed"]
+    total_profit: float
+    optimal_profit: float
+    success_percentage: float
+    selected_count: int
+    created_at: datetime
+    updated_at: datetime
+    decisions: list[StrategyDecisionReview] = Field(default_factory=list)
+
+
+class ActionResponse(BaseModel):
+    ok: bool = True
+    message: str
+
+
+class DeletedEntitySummary(BaseModel):
+    id: int
+    entity_type: str
+    entity_key: str
+    deleted_at: datetime
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[str] = Field(default_factory=list, min_length=1, max_length=500)
+
+
+class BulkArchiveRequest(BaseModel):
+    ids: list[int] = Field(default_factory=list, min_length=1, max_length=500)
+
+
+class PurgeOlderRequest(BaseModel):
+    days: int = Field(ge=1, le=3650)
+
+
+class AuditEventSummary(BaseModel):
+    id: int
+    actor: str
+    action: str
+    target_type: str
+    target_key: str
+    created_at: datetime
+
+
+class TeacherRiskAlert(BaseModel):
+    session_id: str
+    player_name: str
+    class_code: str | None = None
+    assignment_code: str | None = None
+    status: str
+    day: int
+    cash: float
+    debt: float
+    stress: int
+    score: int
+    risk_score: int
+    risk_level: Literal["low", "medium", "high", "critical"]
+    reasons: list[str] = Field(default_factory=list)
