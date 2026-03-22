@@ -188,6 +188,16 @@ function syncStudentProfileUI() {
   studentIdReadOnlyInput.value = studentId || "";
 }
 
+function saveManualStudentId() {
+  const entered = (studentIdReadOnlyInput.value || "").trim().toUpperCase();
+  studentId = entered;
+  if (studentId) {
+    localStorage.setItem("financegame_student_id", studentId);
+  } else {
+    localStorage.removeItem("financegame_student_id");
+  }
+}
+
 function renderState(state, score = null) {
   stats.innerHTML = "";
 
@@ -553,6 +563,14 @@ if (myClassesEl) {
 classCodeInput.addEventListener("input", () => {
   classCodeInput.value = (classCodeInput.value || "").toUpperCase().trimStart();
 });
+
+if (studentIdReadOnlyInput) {
+  studentIdReadOnlyInput.addEventListener("input", () => {
+    studentIdReadOnlyInput.value = (studentIdReadOnlyInput.value || "").toUpperCase().trimStart();
+  });
+  studentIdReadOnlyInput.addEventListener("change", saveManualStudentId);
+  studentIdReadOnlyInput.addEventListener("blur", saveManualStudentId);
+}
 
 syncStudentProfileUI();
 resetRunView();
