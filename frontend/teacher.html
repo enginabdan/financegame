@@ -24,8 +24,8 @@
           <summary>How This Page Works</summary>
           <div class="log mt-sm">
             <article class="log-item">
-              <strong>1) Access</strong>
-              <p class="meta">Enter API Base URL and Teacher Key, then click Load Dashboard to unlock all teacher tools.</p>
+              <strong>1) Firebase Login</strong>
+              <p class="meta">Sign in once. Dashboard data loads automatically after successful login.</p>
             </article>
             <article class="log-item">
               <strong>2) Class Setup -> Assignment Setup -> Class Students</strong>
@@ -53,7 +53,7 @@
           <div class="log mt-sm">
             <article class="log-item">
               <strong>Step 1</strong>
-              <p class="meta">Paste Teacher Key in Access and click <strong>Load Dashboard</strong>.</p>
+              <p class="meta">Sign in from Firebase Login. Dashboard loads automatically.</p>
             </article>
             <article class="log-item">
               <strong>Step 2</strong>
@@ -79,6 +79,16 @@
             <input id="authPassword" type="password" placeholder="Minimum 6 chars" />
           </label>
         </div>
+        <div class="grid two mt-sm">
+          <label>
+            Confirm Password (Sign Up only)
+            <input id="authConfirmPassword" type="password" placeholder="Re-enter password" />
+          </label>
+          <label>
+            Teacher Key (Sign Up only)
+            <input id="authTeacherKey" type="password" placeholder="Enter teacher key for account creation" />
+          </label>
+        </div>
         <p id="authStatus" class="meta mt-sm">Not signed in.</p>
         <div class="actions-row mt-sm firebase-auth-actions">
           <button id="authSignInBtn" class="btn-no-margin">Sign In</button>
@@ -88,23 +98,10 @@
         </div>
       </section>
 
-      <section class="panel requires-auth">
-        <h2>Access</h2>
-        <div class="grid two">
-          <label>
-            API Base URL
-            <input id="apiBase" value="https://api.bosembo.net" />
-          </label>
-          <label>
-            Teacher Key
-            <input id="teacherKey" type="password" />
-          </label>
-        </div>
-        <label class="inline-check">
-          <input id="rememberAccess" type="checkbox" />
-          Remember API URL and Teacher Key on this browser
-        </label>
-        <button id="loadBtn">Load Dashboard</button>
+      <section class="auth-hidden-inputs" aria-hidden="true">
+        <input id="apiBase" type="hidden" value="https://api.bosembo.net" />
+        <input id="teacherKey" type="hidden" />
+        <input id="rememberAccess" type="checkbox" hidden checked />
       </section>
 
       <section class="panel requires-auth">

@@ -1,4 +1,3 @@
-const loadBtn = document.getElementById("loadBtn");
 const createClassBtn = document.getElementById("createClassBtn");
 const createAssignmentBtn = document.getElementById("createAssignmentBtn");
 const loadClassStudentsBtn = document.getElementById("loadClassStudentsBtn");
@@ -40,6 +39,8 @@ const teacherKeyInput = document.getElementById("teacherKey");
 const rememberAccessInput = document.getElementById("rememberAccess");
 const authEmailInput = document.getElementById("authEmail");
 const authPasswordInput = document.getElementById("authPassword");
+const authConfirmPasswordInput = document.getElementById("authConfirmPassword");
+const authTeacherKeyInput = document.getElementById("authTeacherKey");
 const authSignInBtn = document.getElementById("authSignInBtn");
 const authSignUpBtn = document.getElementById("authSignUpBtn");
 const authForgotBtn = document.getElementById("authForgotBtn");
@@ -76,6 +77,7 @@ const defaultApiBase = window.__APP_CONFIG__?.API_BASE || "http://127.0.0.1:8000
 const STORAGE_API_BASE = "financegame_teacher_api_base";
 const STORAGE_TEACHER_KEY = "financegame_teacher_key";
 const STORAGE_REMEMBER = "financegame_teacher_remember";
+const configuredTeacherKey = (window.__APP_CONFIG__?.TEACHER_KEY || "").trim();
 
 let currentSessions = [];
 let currentSelectedLogs = [];
@@ -88,19 +90,41 @@ let selectedStrategySessionId = null;
 const selectedSessionIds = new Set();
 const selectedStrategyIds = new Set();
 const selectedTrashIds = new Set();
+let autoLoadInProgress = false;
+let lastAutoLoadedEmail = "";
+let missingKeyAlertedForEmail = "";
 
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
 }
 
 function getAccess(requireKey = true) {
-  const apiBase = apiBaseInput.value.trim();
+  const apiBase = normalizeApiBase(apiBaseInput.value.trim());
+  if (!apiBase) {
+    appAlert("API Base URL is required (example: https://api.bosembo.net).");
+    return null;
+  }
+  apiBaseInput.value = apiBase;
   const teacherKey = teacherKeyInput.value.trim();
   if (requireKey && !teacherKey) {
     appAlert("Teacher key is required");
     return null;
   }
   return { apiBase, teacherKey };
+}
+
+function normalizeApiBase(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(withProtocol);
+    return `${url.protocol}//${url.host}`;
+  } catch (_err) {
+    return "";
+  }
 }
 
 const confirmModalEl = document.getElementById("confirmModal");
@@ -694,14 +718,19 @@ async function fetchJson(url, teacherKey, options = {}) {
     }
   }
   const token = window.FinanceAuth?.getIdToken?.() || "";
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "x-teacher-key": teacherKey,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers: {
+        "x-teacher-key": teacherKey,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (_err) {
+    throw new Error("Network error. Verify API Base URL (https://api.bosembo.net) and CORS settings.");
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -776,7 +805,7 @@ async function loadClassStudents() {
 async function loadDashboard() {
   const access = getAccess(true);
   if (!access) {
-    return;
+    return false;
   }
   const { apiBase, teacherKey } = access;
 
@@ -799,8 +828,10 @@ async function loadDashboard() {
     await loadEvidence();
     renderStrategySessionReview(null);
     logsEl.innerHTML = "";
+    return true;
   } catch (err) {
     appAlert(err.message || "Failed to load dashboard");
+    return false;
   }
 }
 
@@ -1751,15 +1782,40 @@ function restoreAccessFields() {
   apiBaseInput.value = savedApiBase || defaultApiBase;
   if (remember && savedTeacherKey) {
     teacherKeyInput.value = savedTeacherKey;
+    return;
   }
+  teacherKeyInput.value = configuredTeacherKey || "";
 }
 
-loadBtn.addEventListener("click", () => {
-  loadDashboard().catch((err) => {
-    console.error(err);
-    appAlert("Unexpected error while loading dashboard");
-  });
-});
+async function triggerAutoDashboardLoad({ force = false, quiet = false } = {}) {
+  const email = (window.FinanceAuth?.getEmail?.() || "").trim().toLowerCase();
+  if (!email) {
+    autoLoadInProgress = false;
+    lastAutoLoadedEmail = "";
+    missingKeyAlertedForEmail = "";
+    return;
+  }
+  if (autoLoadInProgress) {
+    return;
+  }
+  if (!force && lastAutoLoadedEmail === email) {
+    return;
+  }
+  if (!teacherKeyInput.value.trim()) {
+    if (!quiet && missingKeyAlertedForEmail !== email) {
+      appAlert("Teacher API key is missing in runtime config. Set TEACHER_KEY and redeploy hosting.");
+      missingKeyAlertedForEmail = email;
+    }
+    return;
+  }
+  autoLoadInProgress = true;
+  const ok = await loadDashboard();
+  autoLoadInProgress = false;
+  if (ok) {
+    lastAutoLoadedEmail = email;
+    missingKeyAlertedForEmail = "";
+  }
+}
 
 createClassBtn.addEventListener("click", () => {
   createClassroom().catch((err) => {
@@ -2118,8 +2174,9 @@ if (authSignInBtn) {
     const email = (authEmailInput?.value || "").trim();
     const password = (authPasswordInput?.value || "").trim();
     window.FinanceAuth?.signIn?.(email, password)
-      .then(() => {
+      .then(async () => {
         updateAuthStatus();
+        await triggerAutoDashboardLoad({ force: true });
         appAlert("Signed in.", "Success", "success");
       })
       .catch((err) => appAlert(err.message || "Sign in failed"));
@@ -2130,9 +2187,37 @@ if (authSignUpBtn) {
   authSignUpBtn.addEventListener("click", () => {
     const email = (authEmailInput?.value || "").trim();
     const password = (authPasswordInput?.value || "").trim();
+    const confirmPassword = (authConfirmPasswordInput?.value || "").trim();
+    const enteredTeacherKey = (authTeacherKeyInput?.value || "").trim();
+    const requiredTeacherKey = (configuredTeacherKey || teacherKeyInput?.value || "").trim();
+
+    if (!confirmPassword) {
+      appAlert("Confirm password is required for sign up.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      appAlert("Password and confirm password must match.");
+      return;
+    }
+    if (!enteredTeacherKey) {
+      appAlert("Teacher key is required for sign up.");
+      return;
+    }
+    if (!requiredTeacherKey) {
+      appAlert("Teacher key is not configured in app settings.");
+      return;
+    }
+    if (enteredTeacherKey !== requiredTeacherKey) {
+      appAlert("Invalid teacher key for sign up.");
+      return;
+    }
+
     window.FinanceAuth?.signUp?.(email, password)
-      .then(() => {
+      .then(async () => {
         updateAuthStatus();
+        await triggerAutoDashboardLoad({ force: true });
+        if (authConfirmPasswordInput) authConfirmPasswordInput.value = "";
+        if (authTeacherKeyInput) authTeacherKeyInput.value = "";
         appAlert("Account created and signed in.", "Success", "success");
       })
       .catch((err) => appAlert(err.message || "Sign up failed"));
@@ -2155,20 +2240,27 @@ if (authSignOutBtn) {
   authSignOutBtn.addEventListener("click", () => {
     window.FinanceAuth?.signOut?.();
     updateAuthStatus();
+    autoLoadInProgress = false;
+    lastAutoLoadedEmail = "";
+    missingKeyAlertedForEmail = "";
     appAlert("Signed out.", "Success", "success");
   });
 }
 
 if (window.FinanceAuth?.onChange) {
-  window.FinanceAuth.onChange(() => updateAuthStatus());
+  window.FinanceAuth.onChange(() => {
+    updateAuthStatus();
+    triggerAutoDashboardLoad({ force: false, quiet: true }).catch(() => {});
+  });
 }
 
 restoreAccessFields();
 renderStrategySessionReview(null);
 updateAuthStatus();
+triggerAutoDashboardLoad({ force: false, quiet: true }).catch(() => {});
 
 setInterval(() => {
-  if (teacherKeyInput.value.trim()) {
+  if (teacherKeyInput.value.trim() && window.FinanceAuth?.getEmail?.()) {
     loadStrategyLeaderboard().catch(() => {});
   }
 }, 20000);
