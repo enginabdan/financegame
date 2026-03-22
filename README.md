@@ -69,7 +69,7 @@ python3 -m http.server 4173
 
 Student game: `http://127.0.0.1:4173`
 Teacher dashboard: `http://127.0.0.1:4173/teacher.html`
-1-hour assignment sprint: `http://127.0.0.1:4173/sprint.html`
+Sprint module: included in the main student page (`/`)
 
 ## Environment Variables
 
@@ -87,6 +87,10 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 
 - `GET /health`
 - `POST /api/new-game`
+- `POST /api/student/register`
+- `POST /api/student/join-class`
+- `GET /api/student/me/classes`
+- `GET /api/student/classes/{class_code}/assignments?student_id=...`
 - `POST /api/student/join-assignment`
 - `POST /api/advance-day`
 - `POST /api/strategy/start`
@@ -95,6 +99,8 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 - `GET /api/strategy/{session_id}/result`
 - `POST /api/teacher/classes` (header: `x-teacher-key`)
 - `GET /api/teacher/classes` (header: `x-teacher-key`)
+- `GET /api/teacher/classes/{class_code}/students` (header: `x-teacher-key`)
+- `DELETE /api/teacher/classes/{class_code}/students/{student_id}` (header: `x-teacher-key`)
 - `PATCH /api/teacher/classes/{class_code}` (header: `x-teacher-key`)
 - `DELETE /api/teacher/classes/{class_code}` (header: `x-teacher-key`)
 - `POST /api/teacher/assignments` (header: `x-teacher-key`)
@@ -125,13 +131,13 @@ If `OPENAI_API_KEY` is missing, gameplay still works with deterministic fallback
 1. Teacher opens `/teacher.html`, enters API base URL and `TEACHER_API_KEY`.
 2. Teacher creates a class and gets a `CLASS_CODE`.
 3. Teacher creates an assignment under that class and gets an `ASSIGNMENT_CODE`.
-4. Student opens the game page and starts either:
-   - Free play (leave codes empty), or
-   - Classroom run (enter both class + assignment code).
-5. Teacher dashboard shows all sessions and per-day logs in real time.
-6. Teacher can open assignment rubric and export sessions/day-logs as CSV.
-7. Teacher can edit or delete classes, assignments, and sessions directly in dashboard cards.
-8. Teacher can inspect full sprint decision history (all offered options, selected option, optimal benchmark gap) and delete sprint sessions if needed.
+4. Student opens `/`, creates a student profile (gets `STUDENT_ID`), and joins class using `CLASS_CODE`.
+5. Student loads only their joined classes and active assignments, then starts assignment run.
+6. Teacher dashboard shows all sessions and per-day logs in real time.
+7. Teacher can open assignment rubric and export sessions/day-logs as CSV.
+8. Teacher can edit or delete classes, assignments, and sessions directly in dashboard cards.
+9. Teacher can remove students from class rosters when needed.
+10. Teacher can inspect full sprint decision history (all offered options, selected option, optimal benchmark gap) and delete sprint sessions if needed.
 
 ## Documents
 

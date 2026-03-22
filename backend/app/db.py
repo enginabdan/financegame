@@ -31,6 +31,24 @@ class ClassroomModel(Base):
         back_populates="classroom",
         cascade="all, delete-orphan",
     )
+    memberships: Mapped[list["StudentClassMembershipModel"]] = relationship(
+        back_populates="classroom",
+        cascade="all, delete-orphan",
+    )
+
+
+class StudentProfileModel(Base):
+    __tablename__ = "student_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[str] = mapped_column(String(24), nullable=False, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    memberships: Mapped[list["StudentClassMembershipModel"]] = relationship(
+        back_populates="student",
+        cascade="all, delete-orphan",
+    )
 
 
 class AssignmentModel(Base):
@@ -94,6 +112,21 @@ class AssignmentEnrollmentModel(Base):
 
     assignment: Mapped[AssignmentModel] = relationship(back_populates="enrollments")
     session: Mapped[GameSessionModel] = relationship(back_populates="enrollments")
+
+
+class StudentClassMembershipModel(Base):
+    __tablename__ = "student_class_memberships"
+    __table_args__ = (
+        UniqueConstraint("student_id_fk", "classroom_id", name="uq_student_class_membership"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id_fk: Mapped[int] = mapped_column(ForeignKey("student_profiles.id"), nullable=False, index=True)
+    classroom_id: Mapped[int] = mapped_column(ForeignKey("classrooms.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    student: Mapped[StudentProfileModel] = relationship(back_populates="memberships")
+    classroom: Mapped[ClassroomModel] = relationship(back_populates="memberships")
 
 
 class GameDayLogModel(Base):

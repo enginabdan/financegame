@@ -12,9 +12,51 @@ class NewGameRequest(BaseModel):
 
 
 class StudentJoinAssignmentRequest(BaseModel):
+    student_id: str = Field(min_length=6, max_length=24)
     player_name: str = "Player"
     class_code: str = Field(min_length=4, max_length=24)
     assignment_code: str = Field(min_length=4, max_length=24)
+
+
+class StudentRegisterRequest(BaseModel):
+    display_name: str = Field(min_length=2, max_length=120)
+
+
+class StudentProfileSummary(BaseModel):
+    student_id: str
+    display_name: str
+    created_at: datetime
+
+
+class StudentClassJoinRequest(BaseModel):
+    student_id: str = Field(min_length=6, max_length=24)
+    class_code: str = Field(min_length=4, max_length=24)
+
+
+class StudentClassSummary(BaseModel):
+    class_code: str
+    class_name: str
+    joined_at: datetime
+
+
+class StudentAssignmentOption(BaseModel):
+    assignment_code: str
+    title: str
+    city: str
+    start_cash: float
+    duration_days: int
+
+
+class StudentClassAssignmentsResponse(BaseModel):
+    class_code: str
+    class_name: str
+    assignments: list[StudentAssignmentOption] = Field(default_factory=list)
+
+
+class TeacherClassStudentRow(BaseModel):
+    student_id: str
+    display_name: str
+    joined_at: datetime
 
 
 class DayAllocation(BaseModel):

@@ -16,6 +16,8 @@ from .db import (
     DeletedEntityModel,
     GameDayLogModel,
     GameSessionModel,
+    StudentClassMembershipModel,
+    StudentProfileModel,
     StrategyDecisionModel,
     StrategySessionModel,
 )
@@ -28,6 +30,11 @@ from .schemas import (
     ClassroomSummary,
     DailyResult,
     GameState,
+    StudentAssignmentOption,
+    StudentClassSummary,
+    StudentClassAssignmentsResponse,
+    StudentProfileSummary,
+    TeacherClassStudentRow,
     StrategyDecisionReview,
     TeacherDayLog,
     TeacherOverviewResponse,
@@ -99,6 +106,14 @@ class GameRepository:
             if not exists:
                 return candidate
         raise RuntimeError("Unable to generate strategy session id")
+
+    def _unique_student_id(self) -> str:
+        for _ in range(30):
+            candidate = self._code(8)
+            exists = self.db.query(StudentProfileModel).filter(StudentProfileModel.student_id == candidate).first()
+            if not exists:
+                return candidate
+        raise RuntimeError("Unable to generate student id")
 
     def create_classroom(self, class_name: str) -> ClassroomSummary:
         class_code = self._unique_class_code()
@@ -209,6 +224,152 @@ class GameRepository:
             )
             for row in rows
         ]
+
+    def register_student(self, display_name: str) -> StudentProfileSummary:
+        student_id = self._unique_student_id()
+        row = StudentProfileModel(student_id=student_id, display_name=display_name.strip())
+        self.db.add(row)
+        self._audit(
+            action="register_student",
+            target_type="student",
+            target_key=student_id,
+            detail={"display_name": row.display_name},
+            actor="student",
+        )
+        self.db.commit()
+        self.db.refresh(row)
+        return StudentProfileSummary(
+            student_id=row.student_id,
+            display_name=row.display_name,
+            created_at=row.created_at,
+        )
+
+    def get_student(self, student_id: str) -> StudentProfileModel | None:
+        return self.db.query(StudentProfileModel).filter(StudentProfileModel.student_id == student_id.upper()).first()
+
+    def join_class(self, student_id: str, class_code: str) -> StudentClassSummary:
+        student = self.get_student(student_id)
+        if student is None:
+            raise ValueError("Student profile not found")
+
+        classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if classroom is None:
+            raise ValueError("Class not found")
+
+        existing = (
+            self.db.query(StudentClassMembershipModel)
+            .filter(
+                StudentClassMembershipModel.student_id_fk == student.id,
+                StudentClassMembershipModel.classroom_id == classroom.id,
+            )
+            .first()
+        )
+        if existing is None:
+            existing = StudentClassMembershipModel(student_id_fk=student.id, classroom_id=classroom.id)
+            self.db.add(existing)
+            self._audit(
+                action="join_class",
+                target_type="classroom",
+                target_key=classroom.class_code,
+                detail={"student_id": student.student_id},
+                actor="student",
+            )
+            self.db.commit()
+            self.db.refresh(existing)
+
+        return StudentClassSummary(
+            class_code=classroom.class_code,
+            class_name=classroom.class_name,
+            joined_at=existing.created_at,
+        )
+
+    def student_classes(self, student_id: str) -> list[StudentClassSummary]:
+        student = self.get_student(student_id)
+        if student is None:
+            raise ValueError("Student profile not found")
+
+        rows = (
+            self.db.query(StudentClassMembershipModel, ClassroomModel)
+            .join(ClassroomModel, ClassroomModel.id == StudentClassMembershipModel.classroom_id)
+            .filter(StudentClassMembershipModel.student_id_fk == student.id)
+            .order_by(StudentClassMembershipModel.created_at.desc())
+            .all()
+        )
+        return [
+            StudentClassSummary(
+                class_code=classroom.class_code,
+                class_name=classroom.class_name,
+                joined_at=membership.created_at,
+            )
+            for membership, classroom in rows
+        ]
+
+    def _student_is_member_of_class(self, *, student_id: str, class_code: str) -> bool:
+        student = self.get_student(student_id)
+        if student is None:
+            return False
+        classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if classroom is None:
+            return False
+        membership = (
+            self.db.query(StudentClassMembershipModel)
+            .filter(
+                StudentClassMembershipModel.student_id_fk == student.id,
+                StudentClassMembershipModel.classroom_id == classroom.id,
+            )
+            .first()
+        )
+        return membership is not None
+
+    def class_students(self, class_code: str) -> list[TeacherClassStudentRow]:
+        classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if classroom is None:
+            raise ValueError("Class not found")
+
+        rows = (
+            self.db.query(StudentClassMembershipModel, StudentProfileModel)
+            .join(StudentProfileModel, StudentProfileModel.id == StudentClassMembershipModel.student_id_fk)
+            .filter(StudentClassMembershipModel.classroom_id == classroom.id)
+            .order_by(StudentClassMembershipModel.created_at.desc())
+            .all()
+        )
+        return [
+            TeacherClassStudentRow(
+                student_id=student.student_id,
+                display_name=student.display_name,
+                joined_at=membership.created_at,
+            )
+            for membership, student in rows
+        ]
+
+    def remove_student_from_class(self, class_code: str, student_id: str) -> ActionResponse:
+        classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if classroom is None:
+            raise ValueError("Class not found")
+        student = self.get_student(student_id)
+        if student is None:
+            raise ValueError("Student not found")
+
+        membership = (
+            self.db.query(StudentClassMembershipModel)
+            .filter(
+                StudentClassMembershipModel.classroom_id == classroom.id,
+                StudentClassMembershipModel.student_id_fk == student.id,
+            )
+            .first()
+        )
+        if membership is None:
+            raise ValueError("Student is not a member of this class")
+
+        self.db.delete(membership)
+        self._audit(
+            action="remove_student_from_class",
+            target_type="classroom",
+            target_key=classroom.class_code,
+            detail={"student_id": student.student_id},
+        )
+        self.db.commit()
+        return ActionResponse(message=f"Student {student.student_id} removed from class {classroom.class_code}")
 
     def create_assignment(
         self,
@@ -377,6 +538,45 @@ class GameRepository:
             )
         return results
 
+    def student_class_assignments(self, student_id: str, class_code: str) -> StudentClassAssignmentsResponse:
+        student = self.get_student(student_id)
+        if student is None:
+            raise ValueError("Student profile not found")
+        classroom = self.db.query(ClassroomModel).filter(ClassroomModel.class_code == class_code.upper()).first()
+        if classroom is None:
+            raise ValueError("Class not found")
+        membership = (
+            self.db.query(StudentClassMembershipModel)
+            .filter(
+                StudentClassMembershipModel.student_id_fk == student.id,
+                StudentClassMembershipModel.classroom_id == classroom.id,
+            )
+            .first()
+        )
+        if membership is None:
+            raise ValueError("Student is not a member of this class")
+
+        rows = (
+            self.db.query(AssignmentModel)
+            .filter(AssignmentModel.classroom_id == classroom.id, AssignmentModel.is_active.is_(True))
+            .order_by(AssignmentModel.created_at.desc())
+            .all()
+        )
+        return StudentClassAssignmentsResponse(
+            class_code=classroom.class_code,
+            class_name=classroom.class_name,
+            assignments=[
+                StudentAssignmentOption(
+                    assignment_code=row.assignment_code,
+                    title=row.title,
+                    city=row.city,
+                    start_cash=row.start_cash,
+                    duration_days=row.duration_days,
+                )
+                for row in rows
+            ],
+        )
+
     def assignment_rubric(self, assignment_code: str, limit: int = 200) -> list[AssignmentRubricRow]:
         rows = (
             self.db.query(GameSessionModel)
@@ -451,11 +651,14 @@ class GameRepository:
 
     def create_session_from_assignment(
         self,
+        student_id: str,
         player_name: str,
         class_code: str,
         assignment_code: str,
         session_id: str,
     ) -> GameState:
+        if not self._student_is_member_of_class(student_id=student_id, class_code=class_code):
+            raise ValueError("Student is not a member of this class")
         assignment_row = self._assignment_by_codes(class_code=class_code, assignment_code=assignment_code)
         if assignment_row is None:
             raise ValueError("Assignment not found or inactive")
@@ -788,6 +991,19 @@ class GameRepository:
         self.db.delete(row)
         self.db.commit()
         return ActionResponse(message=f"Session {session_id} deleted")
+
+    def remove_session_from_class(self, session_id: str) -> ActionResponse:
+        enrollment = (
+            self.db.query(AssignmentEnrollmentModel)
+            .filter(AssignmentEnrollmentModel.session_id == session_id)
+            .first()
+        )
+        if enrollment is None:
+            raise ValueError("Session is not enrolled in a class assignment")
+        self.db.delete(enrollment)
+        self._audit(action="remove_session_enrollment", target_type="session", target_key=session_id)
+        self.db.commit()
+        return ActionResponse(message=f"Session {session_id} removed from class assignment")
 
     def _grade_letter(self, score: int) -> str:
         if score >= 90:

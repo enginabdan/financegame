@@ -31,7 +31,13 @@ from .schemas import (
     GameState,
     NewGameRequest,
     PurgeOlderRequest,
+    StudentClassJoinRequest,
+    StudentClassSummary,
+    StudentClassAssignmentsResponse,
+    StudentProfileSummary,
+    StudentRegisterRequest,
     StudentJoinAssignmentRequest,
+    TeacherClassStudentRow,
     UpdateAssignmentRequest,
     UpdateClassroomRequest,
     UpdateTeacherSessionRequest,
@@ -109,17 +115,51 @@ def new_game(req: NewGameRequest, db: Session = Depends(get_db)) -> GameState:
     return state
 
 
+@app.post("/api/student/register", response_model=StudentProfileSummary)
+def register_student(req: StudentRegisterRequest, db: Session = Depends(get_db)) -> StudentProfileSummary:
+    repo = GameRepository(db)
+    return repo.register_student(display_name=req.display_name)
+
+
+@app.post("/api/student/join-class", response_model=StudentClassSummary)
+def join_class(req: StudentClassJoinRequest, db: Session = Depends(get_db)) -> StudentClassSummary:
+    repo = GameRepository(db)
+    try:
+        return repo.join_class(student_id=req.student_id, class_code=req.class_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/student/me/classes", response_model=list[StudentClassSummary])
+def student_classes(student_id: str, db: Session = Depends(get_db)) -> list[StudentClassSummary]:
+    repo = GameRepository(db)
+    try:
+        return repo.student_classes(student_id=student_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.post("/api/student/join-assignment", response_model=GameState)
 def join_assignment(req: StudentJoinAssignmentRequest, db: Session = Depends(get_db)) -> GameState:
     repo = GameRepository(db)
     session_id = str(uuid.uuid4())
     try:
         return repo.create_session_from_assignment(
+            student_id=req.student_id,
             player_name=req.player_name,
             class_code=req.class_code,
             assignment_code=req.assignment_code,
             session_id=session_id,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/student/classes/{class_code}/assignments", response_model=StudentClassAssignmentsResponse)
+def student_class_assignments(class_code: str, student_id: str, db: Session = Depends(get_db)) -> StudentClassAssignmentsResponse:
+    repo = GameRepository(db)
+    try:
+        return repo.student_class_assignments(student_id=student_id, class_code=class_code)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -165,6 +205,35 @@ def list_classes(
     _require_teacher_key(x_teacher_key)
     repo = GameRepository(db)
     return repo.list_classrooms()
+
+
+@app.get("/api/teacher/classes/{class_code}/students", response_model=list[TeacherClassStudentRow])
+def class_students(
+    class_code: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> list[TeacherClassStudentRow]:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.class_students(class_code=class_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/teacher/classes/{class_code}/students/{student_id}", response_model=ActionResponse)
+def remove_student_from_class(
+    class_code: str,
+    student_id: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.remove_student_from_class(class_code=class_code, student_id=student_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.patch("/api/teacher/classes/{class_code}", response_model=ClassroomSummary)
@@ -353,6 +422,20 @@ def delete_teacher_session(
     repo = GameRepository(db)
     try:
         return repo.delete_teacher_session(session_id=session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/teacher/sessions/{session_id}/enrollment", response_model=ActionResponse)
+def remove_teacher_session_enrollment(
+    session_id: str,
+    x_teacher_key: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    _require_teacher_key(x_teacher_key)
+    repo = GameRepository(db)
+    try:
+        return repo.remove_session_from_class(session_id=session_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
